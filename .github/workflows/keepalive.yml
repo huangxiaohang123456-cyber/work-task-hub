@@ -1,20 +1,28 @@
-# 工作任务台 · Supabase 免费版保活
-# 作用：每天自动访问一次数据库，避免免费项目因“7 天无活动”被暂停。
-# 说明：用你已有的 GitHub 账号运行，不新增任何账号、零成本。
-name: Keep Supabase Alive
+name: Keepalive
 
+# 防止 Supabase 免费项目因「约 7 天无数据库访问」被自动暂停。
+# 每天定时向数据库发一次请求（保留在此仓库的 Secrets 中：SUPABASE_URL / SUPABASE_ANON_KEY）。
+# 日常打开 App 使用本身也会访问数据库，本任务只是长期无人使用时的兜底。
 on:
   schedule:
-    - cron: '17 3 * * *'      # 每天 UTC 03:17 访问一次（约等于北京时间 11:17）
-  workflow_dispatch: {}        # 也可在 Actions 页面手动“Run workflow”触发
+    - cron: '23 3 * * *'   # 每天 UTC 03:23（北京时间约 11:23）
+  workflow_dispatch: {}    # 可手动在 Actions 页面点击运行
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase REST API
+      - name: Ping Supabase（保持项目活跃）
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
-          curl -s -o /dev/null -w "HTTP %{http_code}\n" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/tasks?select=id&limit=1" \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "未配置 SUPABASE_URL / SUPABASE_ANON_KEY，跳过保活。"
+            exit 0
+          fi
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            "$SUPABASE_URL/rest/v1/tasks?select=id&limit=1" \
+            -H "apikey: $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+          echo "Supabase ping 返回 HTTP $CODE"

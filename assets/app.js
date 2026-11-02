@@ -244,6 +244,7 @@
   }
 
   // 确保已获取团队密钥（用于加解密任务内容）。若本机未保存，则弹出输入框要求输入。
+  // 管理员首次登录且无本地密钥时，额外提供“创建团队密钥”入口（SQL 导入管理员不走初始化面板，需此补位）。
   async function ensureTeamKey() {
     const raw = getTeamKeyRaw();
     if (raw) {
@@ -254,10 +255,14 @@
       const input = $('#teamkey-input');
       const msg = $('#teamkey-msg');
       const submit = $('#teamkey-submit');
+      const createBox = $('#teamkey-create');
+      const isAdmin = !!(state.user && state.user.is_admin);
       msg.textContent = '';
       input.value = '';
+      createBox.classList.toggle('hidden', !isAdmin);
       openModal('#teamkey-modal');
-      const handler = async () => {
+
+      const onEnter = async () => {
         const v = input.value.trim();
         if (!v) { msg.textContent = '请输入团队密钥'; return; }
         try {
@@ -265,11 +270,37 @@
           cryptoKey = k;
           setTeamKeyRaw(v);
           closeModal('#teamkey-modal');
-          submit.removeEventListener('click', handler);
+          submit.removeEventListener('click', onEnter);
+          if (onCreate) createBtn.removeEventListener('click', onCreate);
           resolve(k);
         } catch (e) { msg.textContent = '密钥无效：' + (e.message || e); }
       };
-      submit.addEventListener('click', handler);
+
+      let createBtn = null, onCreate = null;
+      if (isAdmin) {
+        createBtn = $('#tk-create-btn');
+        $('#tk-new').value = '';
+        $('#tk-new2').value = '';
+        $('#tk-create-msg').textContent = '';
+        onCreate = async () => {
+          const nk = $('#tk-new').value;
+          const nk2 = $('#tk-new2').value;
+          const cmsg = $('#tk-create-msg');
+          if (!nk || nk !== nk2) { cmsg.textContent = '请输入新团队密钥并两次一致'; return; }
+          try {
+            const k = await deriveKey(nk);
+            cryptoKey = k;
+            setTeamKeyRaw(nk);
+            closeModal('#teamkey-modal');
+            submit.removeEventListener('click', onEnter);
+            createBtn.removeEventListener('click', onCreate);
+            alert('✅ 团队密钥已设置并保存在本机。请把团队密钥《' + nk + '》发给所有成员，他们在登录后需输入它来解锁任务内容。');
+            resolve(k);
+          } catch (e) { cmsg.textContent = '创建失败：' + (e.message || e); }
+        };
+        createBtn.addEventListener('click', onCreate);
+      }
+      submit.addEventListener('click', onEnter);
     });
   }
 

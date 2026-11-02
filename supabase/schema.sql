@@ -1,8 +1,10 @@
 -- ============================================================
--- 工作任务台 · 数据库结构 v2（自定义账号：人事编码登录）
+-- 工作任务台 · 数据库结构 v3（自定义账号：人事编码登录 + 浏览器端加密）
 -- 执行方式：Supabase 控制台 → SQL Editor → 新建查询 → 粘贴全部内容 → Run
 -- 注意：本脚本会 DROP 并重建 tasks / profiles 旧表，首次运行无影响；
 --       若之前已有任务数据，请先自行备份再执行（目前项目尚未正式使用，可直接执行）。
+-- 数据保护：任务正文经前端用「团队密钥」AES-GCM 加密后存为 data_enc 密文，
+--          Supabase 仅见密文、读不到明文（团队密钥只存于各成员本地浏览器）。
 -- ============================================================
 
 -- 删除旧结构（首次运行自动跳过）
@@ -25,15 +27,15 @@ create table if not exists public.members (
 create index if not exists members_name_idx on public.members (name);
 
 -- 2) 任务表（团队共享：所有成员可见/可增/可改/可删）
+--    注意：任务正文（标题/描述/标签）由前端用「团队密钥」做 AES-GCM 加密后，
+--          以 data_enc 密文形式存放；Supabase 侧只看到乱码，读不到明文。
 create table if not exists public.tasks (
   id            uuid        primary key default gen_random_uuid(),
-  title         text        not null,
-  description   text        not null default '',
+  data_enc      text        not null default '',           -- 加密后的任务内容(JSON: {title,description,tags})
   priority      text        not null default 'medium' check (priority in ('high','medium','low')),
-  tags          text[]      not null default '{}',
-  due_date      timestamptz,                              -- 截止日期
   recurrence    text        not null default 'none'  check (recurrence in ('none','daily','weekly','monthly')),
   status        text        not null default 'todo'   check (status in ('todo','doing','done')),
+  due_date      timestamptz,                              -- 截止日期
   sort_order    integer     not null default 0,          -- 拖拽排序用
   creator_code  text,                                     -- 添加人的人事编码
   creator_name  text,                                     -- 添加人的姓名

@@ -300,11 +300,11 @@
     </div>
   </div>
 
-  <!-- ===== 团队密钥解锁 弹窗（不可点背景关闭） ===== -->
+  <!-- ===== 团队密钥解锁 / 创建 弹窗（不可点背景关闭） ===== -->
   <div id="teamkey-modal" class="modal hidden" data-noclose>
     <div class="modal-card">
       <div class="modal-head">
-        <h2>输入团队密钥</h2>
+        <h2>团队密钥</h2>
       </div>
       <p class="form-hint">任务内容已加密保存在云端。请输入管理员提供的「团队密钥」以解锁查看。该密钥只保存在你本机浏览器，不会上传。</p>
       <label>团队密钥
@@ -313,6 +313,23 @@
       <p id="teamkey-msg" class="form-msg"></p>
       <div class="modal-foot">
         <button type="button" class="btn btn-primary" id="teamkey-submit">解锁</button>
+      </div>
+
+      <!-- 管理员首次设置：创建团队密钥（默认隐藏，仅管理员首次出现） -->
+      <div id="teamkey-create" class="hidden">
+        <div class="divider"></div>
+        <h3 class="sub-title">创建团队密钥（首次设置）</h3>
+        <p class="form-hint">你是管理员且本机尚未保存团队密钥。请创建一个团队密钥（之后要发给所有成员），用于在云端加密任务内容。团队成员在登录后同样需要输入这把密钥才能看到任务。</p>
+        <label>新团队密钥
+          <input type="password" id="tk-new" placeholder="设置一个团队密钥" />
+        </label>
+        <label>确认团队密钥
+          <input type="password" id="tk-new2" placeholder="再次输入" />
+        </label>
+        <p id="tk-create-msg" class="form-msg"></p>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-primary" id="tk-create-btn">创建并解锁</button>
+        </div>
       </div>
     </div>
   </div>

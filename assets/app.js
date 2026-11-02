@@ -1,6 +1,8 @@
 /* ============================================================
- * 工作任务台 · 前端逻辑（原生 JS + Supabase）
- * 依赖（已在 index.html 以 UMD 引入）：supabase、dayjs、Sortable、XLSX、Chart
+ * 工作任务台 · 前端逻辑（原生 JS + Supabase 免费版）
+ * 依赖（已在 index.html 以 UMD 引入）：supabase-js、dayjs、Sortable、XLSX、Chart
+ * 数据全部存于 Supabase（免费、无需付费）；团队共享、邮箱登录、拖拽/筛选/统计/导出/微信推送逻辑不变。
+ * 免费版会在约 7 天无数据库访问后暂停，已通过 .github/workflows/keepalive.yml 每天自动 ping 一次来兜底。
  * ============================================================ */
 (function () {
   'use strict';
@@ -9,15 +11,18 @@
   const cfg = window.APP_CONFIG || {};
   const URL = cfg.SUPABASE_URL;
   const KEY = cfg.SUPABASE_ANON_KEY;
-  let client = null;
-  if (URL && URL.indexOf('YOUR_') !== 0 && KEY && KEY.indexOf('YOUR_') !== 0) {
-    client = supabase.createClient(URL, KEY);
+  const LS_USER = 'wtb_local_user';
+
+  let supabase = null, ready = false;
+  if (URL && KEY && URL.indexOf('YOUR_') !== 0 && window.supabase) {
+    supabase = window.supabase.createClient(URL, KEY);
+    ready = true;
   }
 
   // ---------- 全局状态 ----------
   const state = {
-    user: null,
-    profile: null,
+    user: null,   // { uid, email, name }
+    profile: null, // { name, pushplus_token, remind_lead_hours }
     tasks: [],
     filters: { status: '', priority: '', recurrence: '', search: '' },
     chart: null
@@ -39,9 +44,9 @@
   // ============================================================
   document.addEventListener('DOMContentLoaded', init);
 
-  function init() {
-    if (!client) {
-      authMsg.textContent = '⚠️ 尚未配置 Supabase。请让管理员在 assets/config.js 填入项目 URL 与 anon key。';
+  async function init() {
+    if (!ready) {
+      authMsg.textContent = '⚠️ 尚未配置 Supabase。请让管理员在 assets/config.js 填入 SUPABASE_URL 与 SUPABASE_ANON_KEY。';
       authSubmit.disabled = true;
       return;
     }
@@ -52,46 +57,61 @@
     bindSettingsForm();
     registerSW();
 
-    client.auth.getSession().then(({ data }) => {
-      if (data.session) onLogin(data.session);
-      else showAuth();
-    });
-    client.auth.onAuthStateChange((_e, session) => {
-      if (session) onLogin(session);
-      else showAuth();
-    });
+    // 尝试恢复登录态
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session && session.user) {
+        state.user = { uid: session.user.id, email: session.user.email, name: (session.user.email || '').split('@')[0] };
+        localStorage.setItem(LS_USER, JSON.stringify(state.user));
+        await afterLogin();
+        return;
+      }
+    } catch (e) { /* 忽略，走登录页 */ }
+    showAuth();
   }
 
   // ============================================================
-  // 认证
+  // 认证（邮箱 + 密码）
   // ============================================================
   function bindAuth() {
     document.querySelectorAll('.tab').forEach((t) => {
       t.addEventListener('click', () => {
         document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
         t.classList.add('active');
-        const tab = t.dataset.tab;
-        authSubmit.textContent = tab === 'login' ? '登录' : '注册';
+        authSubmit.textContent = t.dataset.tab === 'login' ? '登录' : '注册';
         authMsg.textContent = '';
       });
     });
 
     authForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const isLogin = authSubmit.textContent.trim() === '登录';
       const email = $('#auth-email').value.trim();
       const password = $('#auth-password').value;
-      const isLogin = authSubmit.textContent.trim() === '登录';
+      if (!email || !password) { authMsg.textContent = '请填写邮箱和密码'; return; }
       authSubmit.disabled = true;
       authMsg.textContent = '处理中…';
       try {
         if (isLogin) {
-          const { error } = await client.auth.signInWithPassword({ email, password });
+          const { error } = await supabase.auth.signInWithPassword({ email, password });
           if (error) throw error;
         } else {
-          const { error } = await client.auth.signUp({ email, password });
-          if (error) throw error;
-          authMsg.textContent = '注册成功！若管理员开启了邮箱确认，请先查收验证邮件；否则直接登录。';
+          // 注册：先建账号，再尝试自动登录
+          const { error: suErr } = await supabase.auth.signUp({ email, password });
+          if (suErr) throw suErr;
+          const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
+          if (siErr) {
+            authMsg.textContent = '✅ 账号已创建，但自动登录失败：' + siErr.message +
+              '。请先到邮箱完成验证；或让管理员在 Supabase 后台 Authentication → Providers → Email 关闭“Confirm email”后重新登录。';
+            return;
+          }
         }
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error('登录状态获取失败');
+        const localUser = { uid: user.id, email: user.email, name: (user.email || '').split('@')[0] };
+        localStorage.setItem(LS_USER, JSON.stringify(localUser));
+        state.user = localUser;
+        await afterLogin();
       } catch (err) {
         authMsg.textContent = '❌ ' + (err.message || err);
       } finally {
@@ -100,8 +120,7 @@
     });
   }
 
-  async function onLogin(session) {
-    state.user = session.user;
+  async function afterLogin() {
     showMain();
     await loadProfile();
     await loadTasks();
@@ -115,35 +134,82 @@
   function showMain() {
     authView.classList.add('hidden');
     mainView.classList.remove('hidden');
-    const name = (state.profile && state.profile.name) || state.user.email;
-    $('#user-name').textContent = name;
+    $('#user-name').textContent = (state.profile && state.profile.name) || (state.user && state.user.name) || '';
   }
 
   async function logout() {
-    await client.auth.signOut();
+    try { await supabase.auth.signOut(); } catch (e) { /* 忽略 */ }
+    localStorage.removeItem(LS_USER);
     state.user = null; state.profile = null; state.tasks = [];
     showAuth();
   }
 
   // ============================================================
-  // 资料（显示名 / 微信令牌 / 提前量）
+  // 资料（显示名 / 微信令牌 / 提前量）—— 存 profiles 表
   // ============================================================
   async function loadProfile() {
-    const { data, error } = await client
-      .from('profiles').select('*').eq('id', state.user.id).single();
-    if (error && error.code !== 'PGRST116') console.warn(error);
-    state.profile = data || { id: state.user.id, name: '', pushplus_token: '', remind_lead_hours: 24 };
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('name, pushplus_token, remind_lead_hours')
+        .eq('id', state.user.uid)
+        .single();
+      if (data) {
+        state.profile = {
+          name: data.name || (state.user && state.user.name) || '',
+          pushplus_token: data.pushplus_token || '',
+          remind_lead_hours: data.remind_lead_hours || 24
+        };
+        return;
+      }
+      if (error) console.warn('读 profile 失败（将用默认值）：', error.message);
+    } catch (e) { /* 用默认 */ }
+    state.profile = {
+      name: (state.user && state.user.name) || '',
+      pushplus_token: '',
+      remind_lead_hours: 24
+    };
+  }
+
+  async function saveProfile(patch) {
+    const { error } = await supabase.from('profiles').upsert({
+      id: state.user.uid,
+      name: patch.name,
+      pushplus_token: patch.pushplusToken,
+      remind_lead_hours: patch.remindLeadHours
+    });
+    if (error) throw error;
   }
 
   // ============================================================
   // 任务：加载 / 渲染 / 筛选
   // ============================================================
   async function loadTasks() {
-    const { data, error } = await client
-      .from('tasks').select('*').order('sort_order', { ascending: true });
-    if (error) { alert('加载任务失败：' + error.message); return; }
-    state.tasks = data || [];
+    let data, error;
+    try {
+      const res = await supabase.from('tasks').select('*').order('sort_order', { ascending: true });
+      data = res.data; error = res.error;
+    } catch (err) { error = err; }
+    if (error) { alert('加载任务失败：' + (error.message || error)); return; }
+    state.tasks = (data || []).map(dbToTask);
     renderTasks();
+  }
+
+  function dbToTask(d) {
+    return {
+      id: d.id,
+      title: d.title || '',
+      description: d.description || '',
+      priority: d.priority || 'medium',
+      tags: d.tags || [],
+      due_date: d.due_date || null,
+      recurrence: d.recurrence || 'none',
+      status: d.status || 'todo',
+      sort_order: d.sort_order || 0,
+      creator_id: d.creator_id || '',
+      creator_name: d.creator_name || '',
+      created_at: d.created_at || new Date().toISOString()
+    };
   }
 
   function applyFilters() {
@@ -225,7 +291,11 @@
     taskList.querySelectorAll('.status-select').forEach((sel) => {
       sel.addEventListener('change', async () => {
         const id = sel.dataset.id;
-        await updateTask(id, { status: sel.value });
+        try {
+          const { error } = await supabase.from('tasks').update({ status: sel.value }).eq('id', id);
+          if (error) throw error;
+        } catch (e) { alert('更新失败：' + (e.message || e)); }
+        await loadTasks(); checkReminders();
       });
     });
     taskList.querySelectorAll('[data-edit]').forEach((b) => {
@@ -234,8 +304,11 @@
     taskList.querySelectorAll('[data-del]').forEach((b) => {
       b.addEventListener('click', async () => {
         if (!confirm('确定删除该任务？')) return;
-        const { error } = await client.from('tasks').delete().eq('id', b.dataset.del);
-        if (error) return alert('删除失败：' + error.message);
+        const id = b.dataset.del;
+        try {
+          const { error } = await supabase.from('tasks').delete().eq('id', id);
+          if (error) throw error;
+        } catch (e) { return alert('删除失败：' + (e.message || e)); }
         await loadTasks(); checkReminders();
       });
     });
@@ -250,19 +323,13 @@
       animation: 150,
       onEnd: async () => {
         const ids = [...taskList.querySelectorAll('.task-card')].map((li) => li.dataset.id);
-        // 给当前可见列表按顺序编号；隐藏任务保持原 sort_order
-        const visibleSet = new Set(ids);
         let i = 0;
         for (const id of ids) {
-          await client.from('tasks').update({ sort_order: i++ }).eq('id', id);
+          try { await supabase.from('tasks').update({ sort_order: i }).eq('id', id); }
+          catch (e) { /* 忽略单条失败 */ }
+          i++;
         }
-        // 同步本地顺序
-        state.tasks.sort((a, b) => {
-          const ia = ids.indexOf(a.id), ib = ids.indexOf(b.id);
-          if (ia === -1 && ib === -1) return a.sort_order - b.sort_order;
-          if (ia === -1) return 1; if (ib === -1) return -1;
-          return ia - ib;
-        });
+        await loadTasks();
       }
     });
   }
@@ -274,43 +341,47 @@
     $('#task-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = $('#task-id').value;
-      const payload = {
+      const dueVal = $('#f-due').value;
+      const dueIso = dueVal ? new Date(dueVal).toISOString() : null;
+      const tags = $('#f-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
+
+      const data = {
         title: $('#f-title').value.trim(),
         description: $('#f-desc').value.trim(),
         priority: $('#f-priority').value,
         status: $('#f-status').value,
-        due_date: $('#f-due').value ? new Date($('#f-due').value).toISOString() : null,
+        due_date: dueIso,
         recurrence: $('#f-recurrence').value,
-        tags: $('#f-tags').value.split(',').map((s) => s.trim()).filter(Boolean)
+        tags
       };
       const msg = $('#task-form-msg');
-      if (!payload.title) { msg.textContent = '请填写标题'; return; }
+      if (!data.title) { msg.textContent = '请填写标题'; return; }
 
-      let error;
-      if (id) {
-        ({ error } = await client.from('tasks').update(payload).eq('id', id));
-      } else {
-        payload.creator_id = state.user.id;
-        payload.creator_name = (state.profile && state.profile.name) || state.user.email;
-        payload.sort_order = state.tasks.length;
-        ({ error } = await client.from('tasks').insert(payload));
+      try {
+        if (id) {
+          const { error } = await supabase.from('tasks').update(data).eq('id', id);
+          if (error) throw error;
+        } else {
+          data.creator_id = state.user.uid;
+          data.creator_name = (state.profile && state.profile.name) || (state.user && state.user.name) || '';
+          data.sort_order = state.tasks.length;
+          const { error } = await supabase.from('tasks').insert(data);
+          if (error) throw error;
+        }
+      } catch (err) {
+        msg.textContent = '❌ ' + (err.message || err);
+        return;
       }
-      if (error) { msg.textContent = '❌ ' + error.message; return; }
       closeModal('#task-modal');
       await loadTasks(); checkReminders();
     });
-  }
-
-  async function updateTask(id, patch) {
-    const { error } = await client.from('tasks').update(patch).eq('id', id);
-    if (error) return alert('更新失败：' + error.message);
-    await loadTasks(); checkReminders();
   }
 
   function openTaskModal(id) {
     const msg = $('#task-form-msg'); msg.textContent = '';
     if (id) {
       const t = state.tasks.find((x) => x.id === id);
+      if (!t) return;
       $('#task-modal-title').textContent = '编辑任务';
       $('#task-id').value = t.id;
       $('#f-title').value = t.title;
@@ -457,7 +528,7 @@
   }
 
   // ============================================================
-  // 设置
+  // 设置（资料存 profiles 表）
   // ============================================================
   function openSettings() {
     $('#s-name').value = (state.profile && state.profile.name) || '';
@@ -471,13 +542,16 @@
       e.preventDefault();
       const patch = {
         name: $('#s-name').value.trim(),
-        pushplus_token: $('#s-token').value.trim(),
-        remind_lead_hours: parseInt($('#s-lead').value, 10) || 24
+        pushplusToken: $('#s-token').value.trim(),
+        remindLeadHours: parseInt($('#s-lead').value, 10) || 24
       };
-      const { error } = await client.from('profiles').upsert({ id: state.user.id, ...patch });
-      if (error) return alert('保存失败：' + error.message);
+      try {
+        await saveProfile(patch);
+      } catch (err) {
+        return alert('保存失败：' + (err.message || err));
+      }
       state.profile = { ...state.profile, ...patch };
-      $('#user-name').textContent = patch.name || state.user.email;
+      $('#user-name').textContent = patch.name || (state.user && state.user.name) || '';
       closeModal('#settings-modal');
       checkReminders();
       alert('✅ 设置已保存');

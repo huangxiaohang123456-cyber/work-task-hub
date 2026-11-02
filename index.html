@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#2563eb" />
+  <title>工作任务台</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="assets/icon.svg" />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ===== 登录 / 注册 视图 ===== -->
+    <section id="auth-view" class="auth-view">
+      <div class="auth-card">
+        <h1 class="auth-logo">📋 工作任务台</h1>
+        <p class="auth-sub">团队共享 · 日 / 周 / 月任务清单 · 临期微信提醒</p>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="login">登录</button>
+          <button class="tab" data-tab="signup">注册</button>
+        </div>
+
+        <form id="auth-form">
+          <label>邮箱
+            <input type="email" id="auth-email" placeholder="you@company.com" autocomplete="username" required />
+          </label>
+          <label>密码
+            <input type="password" id="auth-password" placeholder="至少 6 位" autocomplete="current-password" required />
+          </label>
+          <p id="auth-msg" class="form-msg"></p>
+          <button type="submit" class="btn btn-primary btn-block" id="auth-submit">登录</button>
+        </form>
+        <p class="auth-hint">团队新成员：先用邮箱注册，注册后告诉管理员在 Supabase 关闭“邮箱确认”即可直接登录（详见交付说明）。</p>
+      </div>
+    </section>
+
+    <!-- ===== 主应用 视图 ===== -->
+    <section id="main-view" class="main-view hidden">
+      <header class="topbar">
+        <div class="topbar-left">
+          <span class="logo">📋 工作任务台</span>
+        </div>
+        <div class="topbar-right">
+          <span id="user-name" class="user-name"></span>
+          <button class="btn btn-ghost" id="btn-settings">⚙ 设置</button>
+          <button class="btn btn-ghost" id="btn-logout">退出</button>
+        </div>
+      </header>
+
+      <!-- 临期 / 逾期 提醒横幅 -->
+      <div id="reminder-banner" class="reminder-banner hidden"></div>
+
+      <!-- 工具栏 -->
+      <div class="toolbar">
+        <button class="btn btn-primary" id="btn-add">＋ 添加任务</button>
+        <button class="btn btn-ghost" id="btn-stats">📊 统计</button>
+        <button class="btn btn-ghost" id="btn-export">⬇ 导出Excel</button>
+        <button class="btn btn-ghost" id="btn-push">🔔 推送到微信</button>
+
+        <div class="filters">
+          <select id="filter-status">
+            <option value="">全部状态</option>
+            <option value="todo">待办</option>
+            <option value="doing">进行中</option>
+            <option value="done">已完成</option>
+          </select>
+          <select id="filter-priority">
+            <option value="">全部优先级</option>
+            <option value="high">高</option>
+            <option value="medium">中</option>
+            <option value="low">低</option>
+          </select>
+          <select id="filter-recurrence">
+            <option value="">全部周期</option>
+            <option value="none">一次性</option>
+            <option value="daily">每天</option>
+            <option value="weekly">每周</option>
+            <option value="monthly">每月</option>
+          </select>
+          <input type="search" id="filter-search" placeholder="搜索标题 / 标签" />
+        </div>
+      </div>
+
+      <!-- 任务列表 -->
+      <ul id="task-list" class="task-list"></ul>
+      <p id="empty-hint" class="empty-hint hidden">还没有任务，点“＋ 添加任务”开始吧。</p>
+    </section>
+  </div>
+
+  <!-- ===== 添加/编辑 任务弹窗 ===== -->
+  <div id="task-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="task-modal-title">添加任务</h2>
+        <button class="modal-close" data-close>×</button>
+      </div>
+      <form id="task-form">
+        <input type="hidden" id="task-id" />
+        <label>标题 *
+          <input type="text" id="f-title" required maxlength="120" placeholder="例如：提交本周周报" />
+        </label>
+        <label>描述
+          <textarea id="f-desc" rows="3" placeholder="补充说明（可选）"></textarea>
+        </label>
+        <div class="row">
+          <label>优先级
+            <select id="f-priority">
+              <option value="high">高</option>
+              <option value="medium" selected>中</option>
+              <option value="low">低</option>
+            </select>
+          </label>
+          <label>状态
+            <select id="f-status">
+              <option value="todo" selected>待办</option>
+              <option value="doing">进行中</option>
+              <option value="done">已完成</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label>截止日期
+            <input type="datetime-local" id="f-due" />
+          </label>
+          <label>周期
+            <select id="f-recurrence">
+              <option value="none" selected>一次性</option>
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+            </select>
+          </label>
+        </div>
+        <label>标签（用逗号分隔）
+          <input type="text" id="f-tags" placeholder="如：汇报, 项目A" />
+        </label>
+        <p id="task-form-msg" class="form-msg"></p>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===== 统计 弹窗 ===== -->
+  <div id="stats-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>完成统计</h2>
+        <button class="modal-close" data-close>×</button>
+      </div>
+      <div id="stats-summary" class="stats-summary"></div>
+      <canvas id="stats-chart" height="220"></canvas>
+    </div>
+  </div>
+
+  <!-- ===== 设置 弹窗 ===== -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>设置</h2>
+        <button class="modal-close" data-close>×</button>
+      </div>
+      <form id="settings-form">
+        <label>显示名称
+          <input type="text" id="s-name" placeholder="你在团队中显示的名字" />
+        </label>
+        <label>微信推送令牌 (PushPlus)
+          <input type="text" id="s-token" placeholder="在 pushplus.plus 获取的 token（留空则不推送）" />
+        </label>
+        <label>提前提醒小时数
+          <input type="number" id="s-lead" min="1" max="720" value="24" />
+        </label>
+        <p class="form-hint">设置 PushPlus 令牌后，点顶部“🔔 推送到微信”可把临期/逾期任务发到你的微信。服务器端自动定时推送为后续可选项。</p>
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close>取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 第三方库（UMD 全局） -->
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1/Sortable.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <!-- 应用配置与逻辑 -->
+  <script src="assets/config.js"></script>
+  <script src="assets/app.js"></script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 /* ============================================================
  * 工作任务台 · 前端逻辑（原生 JS + Supabase 免费版）
- * 依赖（已在 index.html 以 UMD 引入）：supabase-js、dayjs、Sortable、XLSX、Chart
- * 数据全部存于 Supabase（免费、无需付费）；团队共享、邮箱登录、拖拽/筛选/统计/导出/微信推送逻辑不变。
- * 免费版会在约 7 天无数据库访问后暂停，已通过 .github/workflows/keepalive.yml 每天自动 ping 一次来兜底。
+ * 登录体系：管理员导入「人事编码 + 姓名」，成员用 人事编码 + 姓名 + 初始密码(123456) 登录。
+ * 数据全部存于 Supabase（免费）；团队共享、拖拽/筛选/统计/导出/微信推送逻辑不变。
+ * 免费版约 7 天无访问会暂停，已通过 .github/workflows/keepalive.yml 每天 ping 兜底。
  * ============================================================ */
 (function () {
   'use strict';
@@ -12,6 +12,7 @@
   const URL = cfg.SUPABASE_URL;
   const KEY = cfg.SUPABASE_ANON_KEY;
   const LS_USER = 'wtb_local_user';
+  const INITIAL_PWD = '123456';
 
   let supabase = null, ready = false;
   if (URL && KEY && URL.indexOf('YOUR_') !== 0 && window.supabase) {
@@ -21,8 +22,9 @@
 
   // ---------- 全局状态 ----------
   const state = {
-    user: null,   // { uid, email, name }
-    profile: null, // { name, pushplus_token, remind_lead_hours }
+    user: null,        // { code, name, is_admin }
+    profile: null,     // { name, pushplus_token, remind_lead_hours }
+    mustChange: false, // 是否必须改密码
     tasks: [],
     filters: { status: '', priority: '', recurrence: '', search: '' },
     chart: null
@@ -32,12 +34,19 @@
   const $ = (s) => document.querySelector(s);
   const authView = $('#auth-view');
   const mainView = $('#main-view');
-  const authForm = $('#auth-form');
-  const authMsg = $('#auth-msg');
-  const authSubmit = $('#auth-submit');
+  const loginCard = $('#login-card');
+  const initCard = $('#init-card');
+  const loginMsg = $('#login-msg');
+  const initMsg = $('#init-msg');
   const taskList = $('#task-list');
   const emptyHint = $('#empty-hint');
   const reminderBanner = $('#reminder-banner');
+
+  // ---------- 工具：SHA-256 ----------
+  async function sha256(str) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+    return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
+  }
 
   // ============================================================
   // 启动
@@ -46,80 +55,127 @@
 
   async function init() {
     if (!ready) {
-      authMsg.textContent = '⚠️ 尚未配置 Supabase。请让管理员在 assets/config.js 填入 SUPABASE_URL 与 SUPABASE_ANON_KEY。';
-      authSubmit.disabled = true;
+      loginMsg.textContent = '⚠️ 尚未配置 Supabase。请让管理员在 assets/config.js 填入 SUPABASE_URL 与 SUPABASE_ANON_KEY。';
       return;
     }
-    bindAuth();
+    bindLogin();
+    bindInit();
     bindToolbar();
     bindModals();
     bindTaskForm();
     bindSettingsForm();
+    bindAdmin();
+    bindChangePwd();
     registerSW();
 
-    // 尝试恢复登录态
+    // 恢复登录态
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session && session.user) {
-        state.user = { uid: session.user.id, email: session.user.email, name: (session.user.email || '').split('@')[0] };
-        localStorage.setItem(LS_USER, JSON.stringify(state.user));
+      const saved = JSON.parse(localStorage.getItem(LS_USER) || 'null');
+      if (saved && saved.code) {
+        state.user = saved;
         await afterLogin();
         return;
       }
-    } catch (e) { /* 忽略，走登录页 */ }
-    showAuth();
+    } catch (e) { /* 忽略 */ }
+
+    // 未登录：判断是初始化还是登录
+    await decideAuthView();
+  }
+
+  async function decideAuthView() {
+    try {
+      const { count, error } = await supabase
+        .from('members').select('*', { count: 'exact', head: true });
+      if (error) throw error;
+      if (count === 0) {
+        initCard.classList.remove('hidden');
+        loginCard.classList.add('hidden');
+      } else {
+        loginCard.classList.remove('hidden');
+        initCard.classList.add('hidden');
+      }
+    } catch (e) {
+      loginCard.classList.remove('hidden');
+      initCard.classList.add('hidden');
+    }
+    authView.classList.remove('hidden');
   }
 
   // ============================================================
-  // 认证（邮箱 + 密码）
+  // 登录（人事编码 + 姓名 + 密码）
   // ============================================================
-  function bindAuth() {
-    document.querySelectorAll('.tab').forEach((t) => {
-      t.addEventListener('click', () => {
-        document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
-        t.classList.add('active');
-        authSubmit.textContent = t.dataset.tab === 'login' ? '登录' : '注册';
-        authMsg.textContent = '';
-      });
+  function bindLogin() {
+    $('#login-eye').addEventListener('click', () => {
+      const inp = $('#login-pwd');
+      inp.type = inp.type === 'password' ? 'text' : 'password';
     });
-
-    authForm.addEventListener('submit', async (e) => {
+    $('#login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const isLogin = authSubmit.textContent.trim() === '登录';
-      const email = $('#auth-email').value.trim();
-      const password = $('#auth-password').value;
-      if (!email || !password) { authMsg.textContent = '请填写邮箱和密码'; return; }
-      authSubmit.disabled = true;
-      authMsg.textContent = '处理中…';
+      const code = $('#login-code').value.trim();
+      const name = $('#login-name').value.trim();
+      const pwd = $('#login-pwd').value;
+      if (!code || !name || !pwd) { loginMsg.textContent = '请填写人事编码、姓名和密码'; return; }
+      $('#login-submit').disabled = true;
+      loginMsg.textContent = '验证中…';
       try {
-        if (isLogin) {
-          const { error } = await supabase.auth.signInWithPassword({ email, password });
-          if (error) throw error;
-        } else {
-          // 注册：先建账号，再尝试自动登录
-          const { error: suErr } = await supabase.auth.signUp({ email, password });
-          if (suErr) throw suErr;
-          const { error: siErr } = await supabase.auth.signInWithPassword({ email, password });
-          if (siErr) {
-            authMsg.textContent = '✅ 账号已创建，但自动登录失败：' + siErr.message +
-              '。请先到邮箱完成验证；或让管理员在 Supabase 后台 Authentication → Providers → Email 关闭“Confirm email”后重新登录。';
-            return;
-          }
-        }
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error('登录状态获取失败');
-        const localUser = { uid: user.id, email: user.email, name: (user.email || '').split('@')[0] };
-        localStorage.setItem(LS_USER, JSON.stringify(localUser));
-        state.user = localUser;
+        const { data, error } = await supabase
+          .from('members').select('*').eq('code', code).single();
+        if (error || !data) { loginMsg.textContent = '人事编码不存在，请联系管理员导入'; return; }
+        if (data.name.trim() !== name) { loginMsg.textContent = '姓名与档案不符，请检查'; return; }
+        const hash = await sha256(pwd);
+        if (hash !== data.password_hash) { loginMsg.textContent = '密码错误'; return; }
+
+        const user = { code: data.code, name: data.name, is_admin: data.is_admin };
+        localStorage.setItem(LS_USER, JSON.stringify(user));
+        state.user = user;
+        state.mustChange = data.must_change_pwd;
         await afterLogin();
+        if (state.mustChange) openChangePwd(true);
       } catch (err) {
-        authMsg.textContent = '❌ ' + (err.message || err);
+        loginMsg.textContent = '登录出错：' + (err.message || err);
       } finally {
-        authSubmit.disabled = false;
+        $('#login-submit').disabled = false;
       }
     });
   }
 
+  // ============================================================
+  // 初始化管理员（成员表为空时）
+  // ============================================================
+  function bindInit() {
+    $('#init-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const code = $('#init-code').value.trim();
+      const name = $('#init-name').value.trim();
+      const pwd = $('#init-pwd').value;
+      const pwd2 = $('#init-pwd2').value;
+      if (!code || !name || !pwd) { initMsg.textContent = '请填写完整信息'; return; }
+      if (pwd !== pwd2) { initMsg.textContent = '两次密码不一致'; return; }
+      $('#init-submit').disabled = true;
+      initMsg.textContent = '创建中…';
+      try {
+        const hash = await sha256(pwd);
+        const { error } = await supabase.from('members').insert({
+          code, name, password_hash: hash, must_change_pwd: false, is_admin: true
+        });
+        if (error) throw error;
+        const user = { code, name, is_admin: true };
+        localStorage.setItem(LS_USER, JSON.stringify(user));
+        state.user = user;
+        state.mustChange = false;
+        await afterLogin();
+        alert('管理员初始化成功！现在可以在“成员管理”中导入团队成员了。');
+      } catch (err) {
+        initMsg.textContent = '初始化失败：' + (err.message || err);
+      } finally {
+        $('#init-submit').disabled = false;
+      }
+    });
+  }
+
+  // ============================================================
+  // 登录后
+  // ============================================================
   async function afterLogin() {
     showMain();
     await loadProfile();
@@ -127,57 +183,47 @@
     checkReminders();
   }
 
-  function showAuth() {
-    mainView.classList.add('hidden');
-    authView.classList.remove('hidden');
-  }
   function showMain() {
     authView.classList.add('hidden');
     mainView.classList.remove('hidden');
     $('#user-name').textContent = (state.profile && state.profile.name) || (state.user && state.user.name) || '';
+    // 管理员才显示“成员管理”
+    $('#btn-admin').style.display = state.user && state.user.is_admin ? '' : 'none';
   }
 
-  async function logout() {
-    try { await supabase.auth.signOut(); } catch (e) { /* 忽略 */ }
+  function logout() {
     localStorage.removeItem(LS_USER);
     state.user = null; state.profile = null; state.tasks = [];
-    showAuth();
+    location.reload();
   }
 
   // ============================================================
-  // 资料（显示名 / 微信令牌 / 提前量）—— 存 profiles 表
+  // 资料（显示名 / 微信令牌 / 提前量）—— 存在 members 表
   // ============================================================
   async function loadProfile() {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
+      const { data } = await supabase
+        .from('members')
         .select('name, pushplus_token, remind_lead_hours')
-        .eq('id', state.user.uid)
-        .single();
+        .eq('code', state.user.code).single();
       if (data) {
         state.profile = {
-          name: data.name || (state.user && state.user.name) || '',
+          name: data.name || state.user.name,
           pushplus_token: data.pushplus_token || '',
           remind_lead_hours: data.remind_lead_hours || 24
         };
         return;
       }
-      if (error) console.warn('读 profile 失败（将用默认值）：', error.message);
     } catch (e) { /* 用默认 */ }
-    state.profile = {
-      name: (state.user && state.user.name) || '',
-      pushplus_token: '',
-      remind_lead_hours: 24
-    };
+    state.profile = { name: state.user.name, pushplus_token: '', remind_lead_hours: 24 };
   }
 
   async function saveProfile(patch) {
-    const { error } = await supabase.from('profiles').upsert({
-      id: state.user.uid,
+    const { error } = await supabase.from('members').update({
       name: patch.name,
       pushplus_token: patch.pushplusToken,
       remind_lead_hours: patch.remindLeadHours
-    });
+    }).eq('code', state.user.code);
     if (error) throw error;
   }
 
@@ -206,7 +252,7 @@
       recurrence: d.recurrence || 'none',
       status: d.status || 'todo',
       sort_order: d.sort_order || 0,
-      creator_id: d.creator_id || '',
+      creator_code: d.creator_code || '',
       creator_name: d.creator_name || '',
       created_at: d.created_at || new Date().toISOString()
     };
@@ -286,7 +332,6 @@
 
   function priText(p) { return { high: '高', medium: '中', low: '低' }[p] || p; }
 
-  // ---------- 任务项事件 ----------
   function bindTaskItemEvents() {
     taskList.querySelectorAll('.status-select').forEach((sel) => {
       sel.addEventListener('change', async () => {
@@ -314,7 +359,6 @@
     });
   }
 
-  // ---------- 拖拽排序 ----------
   let sortable = null;
   function enableDrag() {
     if (sortable) sortable.destroy();
@@ -362,7 +406,7 @@
           const { error } = await supabase.from('tasks').update(data).eq('id', id);
           if (error) throw error;
         } else {
-          data.creator_id = state.user.uid;
+          data.creator_code = state.user.code;
           data.creator_name = (state.profile && state.profile.name) || (state.user && state.user.name) || '';
           data.sort_order = state.tasks.length;
           const { error } = await supabase.from('tasks').insert(data);
@@ -417,7 +461,6 @@
     $('#btn-stats').addEventListener('click', openStats);
     $('#btn-export').addEventListener('click', exportExcel);
     $('#btn-push').addEventListener('click', pushWeChat);
-    $('#btn-settings').addEventListener('click', openSettings);
 
     $('#filter-status').addEventListener('change', (e) => { state.filters.status = e.target.value; renderTasks(); });
     $('#filter-priority').addEventListener('change', (e) => { state.filters.priority = e.target.value; renderTasks(); });
@@ -451,7 +494,7 @@
         datasets: [{
           label: '任务数',
           data: [byPri.high, byPri.medium, byPri.low, todo, doing, done],
-          backgroundColor: ['#dc2626', '#d97706', '#16a34a', '#94a3b8', '#2563eb', '#16a34a']
+          backgroundColor: ['#dc2626', '#d97706', '#16a34a', '#94a3b8', '#1e7a4e', '#16a34a']
         }]
       },
       options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
@@ -477,7 +520,6 @@
     XLSX.writeFile(wb, '工作任务台_' + dayjs().format('YYYYMMDD') + '.xlsx');
   }
 
-  // ---------- 临期 / 逾期 提醒 ----------
   function getDueTasks() {
     const lead = (state.profile && state.profile.remind_lead_hours) || 24;
     const now = dayjs();
@@ -505,7 +547,7 @@
 
   async function pushWeChat() {
     const token = state.profile && state.profile.pushplus_token;
-    if (!token) { alert('请先在“⚙ 设置”中填写 PushPlus 令牌。'); openSettings(); return; }
+    if (!token) { alert('请先在“我的”中填写 PushPlus 令牌。'); openSettings(); return; }
     const { overdue, soon } = getDueTasks();
     if (!overdue.length && !soon.length) { alert('当前没有临期或逾期任务，无需推送。'); return; }
     const lines = [...overdue, ...soon].map((t) => {
@@ -528,12 +570,14 @@
   }
 
   // ============================================================
-  // 设置（资料存 profiles 表）
+  // 我的（资料 + 改密码）
   // ============================================================
   function openSettings() {
     $('#s-name').value = (state.profile && state.profile.name) || '';
     $('#s-token').value = (state.profile && state.profile.pushplus_token) || '';
     $('#s-lead').value = (state.profile && state.profile.remind_lead_hours) || 24;
+    $('#cp-old').value = ''; $('#cp-new').value = ''; $('#cp-new2').value = '';
+    $('#cp-msg').textContent = '';
     openModal('#settings-modal');
   }
 
@@ -554,8 +598,161 @@
       $('#user-name').textContent = patch.name || (state.user && state.user.name) || '';
       closeModal('#settings-modal');
       checkReminders();
-      alert('✅ 设置已保存');
+      alert('✅ 资料已保存');
     });
+  }
+
+  function bindChangePwd() {
+    $('#cp-btn').addEventListener('click', () => { doChangePwd(false); });
+  }
+
+  async function doChangePwd(force, e) {
+    if (e) e.preventDefault();
+    const oldP = $('#cp-old').value;
+    const newP = $('#cp-new').value;
+    const newP2 = $('#cp-new2').value;
+    const msg = $('#cp-msg');
+    if (!newP || !newP2) { msg.textContent = '请填写新密码和确认新密码'; return; }
+    if (newP !== newP2) { msg.textContent = '两次新密码不一致'; return; }
+    try {
+      if (!force) {
+        if (!oldP) { msg.textContent = '请填写旧密码'; return; }
+        const { data } = await supabase.from('members')
+          .select('password_hash').eq('code', state.user.code).single();
+        if (!data || await sha256(oldP) !== data.password_hash) { msg.textContent = '旧密码错误'; return; }
+      }
+      const { error } = await supabase.from('members').update({
+        password_hash: await sha256(newP), must_change_pwd: false
+      }).eq('code', state.user.code);
+      if (error) { msg.textContent = '修改失败：' + (error.message || error); return; }
+      state.mustChange = false;
+      closeModal('#settings-modal');
+      alert('✅ 密码已修改');
+    } catch (err) {
+      $('#cp-msg').textContent = '修改出错：' + (err.message || err);
+    }
+  }
+
+  function openChangePwd(force) {
+    $('#cp-old').value = ''; $('#cp-new').value = ''; $('#cp-new2').value = '';
+    $('#cp-msg').textContent = force ? '首次登录，请先修改初始密码。' : '';
+    openModal('#settings-modal');
+  }
+
+  // ============================================================
+  // 成员管理（仅管理员）
+  // ============================================================
+  function bindAdmin() {
+    $('#btn-admin').addEventListener('click', openAdmin);
+    $('#am-add').addEventListener('click', async () => {
+      const code = $('#am-code').value.trim();
+      const name = $('#am-name').value.trim();
+      if (!code || !name) { amMsg('请填写人事编码和姓名'); return; }
+      try {
+        const hash = await sha256(INITIAL_PWD);
+        const { error } = await supabase.from('members').insert({
+          code, name, password_hash: hash, must_change_pwd: true, is_admin: false, created_by: state.user.code
+        });
+        if (error) throw error;
+        $('#am-code').value = ''; $('#am-name').value = '';
+        amMsg('✅ 已添加：' + code + ' / ' + name + '（初始密码 123456）', false);
+        renderMembers();
+      } catch (err) {
+        amMsg('添加失败：' + (err.message || err));
+      }
+    });
+    $('#am-bulk-add').addEventListener('click', async () => {
+      const text = $('#am-bulk').value;
+      const list = parseMembers(text);
+      if (!list.length) { amMsg('没有解析到有效的“编码,姓名”行'); return; }
+      try {
+        const hash = await sha256(INITIAL_PWD);
+        const rows = list.map((m) => ({
+          code: m.code, name: m.name, password_hash: hash,
+          must_change_pwd: true, is_admin: false, created_by: state.user.code
+        }));
+        const { error } = await supabase.from('members').insert(rows);
+        if (error) throw error;
+        $('#am-bulk').value = '';
+        amMsg('✅ 已批量导入 ' + list.length + ' 名成员（初始密码 123456）', false);
+        renderMembers();
+      } catch (err) {
+        amMsg('批量导入失败：' + (err.message || err));
+      }
+    });
+  }
+
+  function parseMembers(text) {
+    return text.split(/\r?\n/).map((s) => s.trim()).filter(Boolean).map((line) => {
+      const parts = line.split(/[,，\t]+/).map((s) => s.trim()).filter(Boolean);
+      if (parts.length >= 2) return { code: parts[0], name: parts.slice(1).join(' ') };
+      return null;
+    }).filter(Boolean);
+  }
+
+  async function openAdmin() {
+    openModal('#admin-modal');
+    await renderMembers();
+  }
+
+  async function renderMembers() {
+    try {
+      const { data, error } = await supabase.from('members')
+        .select('code, name, is_admin, must_change_pwd').order('created_at', { ascending: true });
+      if (error) throw error;
+      const box = $('#am-list');
+      box.innerHTML = '';
+      (data || []).forEach((m) => {
+        const row = document.createElement('div');
+        row.className = 'am-item';
+        row.innerHTML = `
+          <span class="am-code">${esc(m.code)}</span>
+          <span class="am-name">${esc(m.name)}</span>
+          ${m.is_admin ? '<span class="am-tag admin">管理员</span>' : ''}
+          ${m.must_change_pwd ? '<span class="am-tag pwd">待改密</span>' : ''}
+          <span class="am-ops">
+            <button class="mini-btn" data-reset="${esc(m.code)}">重置密码</button>
+            ${m.is_admin ? '' : `<button class="mini-btn danger" data-del="${esc(m.code)}">删除</button>`}
+          </span>`;
+        box.appendChild(row);
+      });
+      box.querySelectorAll('[data-reset]').forEach((b) => {
+        b.addEventListener('click', () => resetPwd(b.dataset.reset));
+      });
+      box.querySelectorAll('[data-del]').forEach((b) => {
+        b.addEventListener('click', () => delMember(b.dataset.del));
+      });
+    } catch (e) {
+      amMsg('加载成员失败：' + (e.message || e));
+    }
+  }
+
+  async function resetPwd(code) {
+    if (!confirm('确定将 ' + code + ' 的密码重置为 123456 吗？')) return;
+    try {
+      const { error } = await supabase.from('members')
+        .update({ password_hash: await sha256(INITIAL_PWD), must_change_pwd: true })
+        .eq('code', code);
+      if (error) throw error;
+      amMsg('✅ 已重置 ' + code + ' 的密码为 123456', false);
+      renderMembers();
+    } catch (e) { amMsg('重置失败：' + (e.message || e)); }
+  }
+
+  async function delMember(code) {
+    if (!confirm('确定删除成员 ' + code + ' 吗？该成员的任务记录仍会保留（仅创建人显示为原名）。')) return;
+    try {
+      const { error } = await supabase.from('members').delete().eq('code', code);
+      if (error) throw error;
+      amMsg('✅ 已删除 ' + code, false);
+      renderMembers();
+    } catch (e) { amMsg('删除失败：' + (e.message || e)); }
+  }
+
+  function amMsg(text, isErr) {
+    const el = $('#am-msg');
+    el.textContent = text;
+    el.style.color = isErr === false ? 'var(--green)' : 'var(--red)';
   }
 
   // ============================================================

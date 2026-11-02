@@ -1,7 +1,9 @@
 /* ============================================================
  * 工作任务台 · 前端逻辑（原生 JS + Supabase 免费版）
  * 登录体系：管理员导入「人事编码 + 姓名」，成员用 人事编码 + 姓名 + 初始密码(123456) 登录。
- * 数据全部存于 Supabase（免费）；团队共享、拖拽/筛选/统计/导出/微信推送逻辑不变。
+ * 数据安全：任务正文（标题/描述/标签）在写入 Supabase 前用「团队密钥」做 AES-GCM 加密，
+ *           Supabase 只存密文、看不到明文；团队密钥仅保存在各成员本地浏览器，不上传。
+ * 团队共享、拖拽/筛选/统计/导出/微信推送逻辑不变。
  * 免费版约 7 天无访问会暂停，已通过 .github/workflows/keepalive.yml 每天 ping 兜底。
  * ============================================================ */
 (function () {
@@ -13,6 +15,11 @@
   const KEY = cfg.SUPABASE_ANON_KEY;
   const LS_USER = 'wtb_local_user';
   const INITIAL_PWD = '123456';
+  // ---------- 浏览器端加密（AES-GCM + PBKDF2） ----------
+  const LS_TEAMKEY = 'wtb_team_key_v1';
+  const ENC_SALT = 'work-task-hub::static-salt::v1';
+  const PBKDF2_ITER = 120000;
+  let cryptoKey = null; // 当前会话派生出的 CryptoKey
 
   let supabase = null, ready = false;
   if (URL && KEY && URL.indexOf('YOUR_') !== 0 && window.supabase) {
@@ -48,6 +55,52 @@
     return [...new Uint8Array(buf)].map((x) => x.toString(16).padStart(2, '0')).join('');
   }
 
+  // ---------- 工具：浏览器端加密（AES-GCM + PBKDF2） ----------
+  function getTeamKeyRaw() { return localStorage.getItem(LS_TEAMKEY) || ''; }
+  function setTeamKeyRaw(k) { if (k) localStorage.setItem(LS_TEAMKEY, k); }
+
+  async function deriveKey(passphrase) {
+    const enc = new TextEncoder();
+    const baseKey = await crypto.subtle.importKey('raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      { name: 'PBKDF2', salt: enc.encode(ENC_SALT), iterations: PBKDF2_ITER, hash: 'SHA-256' },
+      baseKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+  }
+
+  function bytesToB64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin);
+  }
+  function b64ToBytes(b64) {
+    const bin = atob(b64);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function encryptObj(obj, key) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const plain = new TextEncoder().encode(JSON.stringify(obj));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, plain);
+    const buf = new Uint8Array(iv.length + ct.byteLength);
+    buf.set(iv, 0);
+    buf.set(new Uint8Array(ct), iv.length);
+    return bytesToB64(buf);
+  }
+
+  async function decryptObj(b64, key) {
+    const buf = b64ToBytes(b64);
+    const iv = buf.slice(0, 12);
+    const ct = buf.slice(12);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ct);
+    return JSON.parse(new TextDecoder().decode(pt));
+  }
+
   // ============================================================
   // 启动
   // ============================================================
@@ -66,6 +119,7 @@
     bindSettingsForm();
     bindAdmin();
     bindChangePwd();
+    bindRekey();
     registerSW();
 
     // 恢复登录态
@@ -149,8 +203,11 @@
       const name = $('#init-name').value.trim();
       const pwd = $('#init-pwd').value;
       const pwd2 = $('#init-pwd2').value;
+      const tk = $('#init-teamkey').value;
+      const tk2 = $('#init-teamkey2').value;
       if (!code || !name || !pwd) { initMsg.textContent = '请填写完整信息'; return; }
       if (pwd !== pwd2) { initMsg.textContent = '两次密码不一致'; return; }
+      if (!tk || tk !== tk2) { initMsg.textContent = '两次团队密钥不一致'; return; }
       $('#init-submit').disabled = true;
       initMsg.textContent = '创建中…';
       try {
@@ -159,12 +216,14 @@
           code, name, password_hash: hash, must_change_pwd: false, is_admin: true
         });
         if (error) throw error;
+        setTeamKeyRaw(tk);
+        cryptoKey = await deriveKey(tk);
         const user = { code, name, is_admin: true };
         localStorage.setItem(LS_USER, JSON.stringify(user));
         state.user = user;
         state.mustChange = false;
         await afterLogin();
-        alert('管理员初始化成功！现在可以在“成员管理”中导入团队成员了。');
+        alert('管理员初始化成功！团队密钥已保存在本机。请把团队密钥《' + tk + '》发给团队成员，他们在登录后需输入它来解锁任务内容。');
       } catch (err) {
         initMsg.textContent = '初始化失败：' + (err.message || err);
       } finally {
@@ -179,8 +238,39 @@
   async function afterLogin() {
     showMain();
     await loadProfile();
+    await ensureTeamKey();
     await loadTasks();
     checkReminders();
+  }
+
+  // 确保已获取团队密钥（用于加解密任务内容）。若本机未保存，则弹出输入框要求输入。
+  async function ensureTeamKey() {
+    const raw = getTeamKeyRaw();
+    if (raw) {
+      cryptoKey = await deriveKey(raw);
+      return cryptoKey;
+    }
+    return new Promise((resolve) => {
+      const input = $('#teamkey-input');
+      const msg = $('#teamkey-msg');
+      const submit = $('#teamkey-submit');
+      msg.textContent = '';
+      input.value = '';
+      openModal('#teamkey-modal');
+      const handler = async () => {
+        const v = input.value.trim();
+        if (!v) { msg.textContent = '请输入团队密钥'; return; }
+        try {
+          const k = await deriveKey(v);
+          cryptoKey = k;
+          setTeamKeyRaw(v);
+          closeModal('#teamkey-modal');
+          submit.removeEventListener('click', handler);
+          resolve(k);
+        } catch (e) { msg.textContent = '密钥无效：' + (e.message || e); }
+      };
+      submit.addEventListener('click', handler);
+    });
   }
 
   function showMain() {
@@ -237,17 +327,30 @@
       data = res.data; error = res.error;
     } catch (err) { error = err; }
     if (error) { alert('加载任务失败：' + (error.message || error)); return; }
-    state.tasks = (data || []).map(dbToTask);
+    const tasks = [];
+    for (const d of (data || [])) {
+      let content = { title: '', description: '', tags: [] };
+      if (d.data_enc) {
+        try {
+          content = await decryptObj(d.data_enc, cryptoKey);
+        } catch (e) {
+          content = { title: '（解密失败·密钥可能不符）', description: '', tags: [] };
+          console.warn('任务解密失败', d.id, e);
+        }
+      }
+      tasks.push(dbToTask(d, content));
+    }
+    state.tasks = tasks;
     renderTasks();
   }
 
-  function dbToTask(d) {
+  function dbToTask(d, content) {
     return {
       id: d.id,
-      title: d.title || '',
-      description: d.description || '',
+      title: content.title || '',
+      description: content.description || '',
       priority: d.priority || 'medium',
-      tags: d.tags || [],
+      tags: content.tags || [],
       due_date: d.due_date || null,
       recurrence: d.recurrence || 'none',
       status: d.status || 'todo',
@@ -389,27 +492,37 @@
       const dueIso = dueVal ? new Date(dueVal).toISOString() : null;
       const tags = $('#f-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
 
-      const data = {
+      const content = {
         title: $('#f-title').value.trim(),
         description: $('#f-desc').value.trim(),
-        priority: $('#f-priority').value,
-        status: $('#f-status').value,
-        due_date: dueIso,
-        recurrence: $('#f-recurrence').value,
         tags
       };
       const msg = $('#task-form-msg');
-      if (!data.title) { msg.textContent = '请填写标题'; return; }
+      if (!content.title) { msg.textContent = '请填写标题'; return; }
+      if (!cryptoKey) { msg.textContent = '⚠️ 团队密钥未就绪，无法加密保存'; return; }
+
+      let data_enc;
+      try {
+        data_enc = await encryptObj(content, cryptoKey);
+      } catch (e) { msg.textContent = '❌ 加密失败：' + (e.message || e); return; }
+
+      const row = {
+        data_enc,
+        priority: $('#f-priority').value,
+        status: $('#f-status').value,
+        due_date: dueIso,
+        recurrence: $('#f-recurrence').value
+      };
 
       try {
         if (id) {
-          const { error } = await supabase.from('tasks').update(data).eq('id', id);
+          const { error } = await supabase.from('tasks').update(row).eq('id', id);
           if (error) throw error;
         } else {
-          data.creator_code = state.user.code;
-          data.creator_name = (state.profile && state.profile.name) || (state.user && state.user.name) || '';
-          data.sort_order = state.tasks.length;
-          const { error } = await supabase.from('tasks').insert(data);
+          row.creator_code = state.user.code;
+          row.creator_name = (state.profile && state.profile.name) || (state.user && state.user.name) || '';
+          row.sort_order = state.tasks.length;
+          const { error } = await supabase.from('tasks').insert(row);
           if (error) throw error;
         }
       } catch (err) {
@@ -606,6 +719,31 @@
     $('#cp-btn').addEventListener('click', () => { doChangePwd(false); });
   }
 
+  // 修改团队密钥：用新密钥重新加密全部任务（旧密钥仍在内存中，可直接解密重算）
+  function bindRekey() {
+    $('#rekey-btn').addEventListener('click', async () => {
+      const nk = $('#rekey-new').value;
+      const nk2 = $('#rekey-new2').value;
+      const msg = $('#rekey-msg');
+      if (!nk || nk !== nk2) { msg.textContent = '请输入新团队密钥并两次一致'; return; }
+      if (!confirm('将用新密钥重新加密全部任务。请确保已把新密钥告知所有成员，否则他们将无法解锁旧任务。继续？')) return;
+      try {
+        const newKey = await deriveKey(nk);
+        for (const t of state.tasks) {
+          const content = { title: t.title, description: t.description, tags: t.tags };
+          const data_enc = await encryptObj(content, newKey);
+          const { error } = await supabase.from('tasks').update({ data_enc }).eq('id', t.id);
+          if (error) throw error;
+        }
+        cryptoKey = newKey;
+        setTeamKeyRaw(nk);
+        msg.textContent = '✅ 已用新密钥重新加密全部任务';
+      } catch (e) {
+        msg.textContent = '重加密失败：' + (e.message || e);
+      }
+    });
+  }
+
   async function doChangePwd(force, e) {
     if (e) e.preventDefault();
     const oldP = $('#cp-old').value;
@@ -763,6 +901,7 @@
       b.addEventListener('click', () => b.closest('.modal').classList.add('hidden'));
     });
     document.querySelectorAll('.modal').forEach((m) => {
+      if (m.hasAttribute('data-noclose')) return; // 团队密钥弹窗不可点背景关闭
       m.addEventListener('click', (e) => { if (e.target === m) m.classList.add('hidden'); });
     });
   }

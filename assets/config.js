@@ -5,7 +5,7 @@
  */
 window.APP_CONFIG = {
   STORAGE_MODE: 'supabase',
-  SUPABASE_URL: 'https://vjcjhfvxrjbotnggqzec.supabase.co',
+  SUPABASE_URL: 'https://ydiumdhewqvnyljllcje.supabase.co',
   SUPABASE_ANON_KEY: 'sb_publishable_mIjNId82zmRh38fIu8ixzw_b8ZwdXAw',
   APP_NAME: '工作任务台'
 };

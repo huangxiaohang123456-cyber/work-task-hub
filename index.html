@@ -12,102 +12,15 @@
 <body>
   <div id="app">
 
-    <!-- ===== 登录 / 初始化 视图 ===== -->
-    <section id="auth-view" class="auth-view">
-      <!-- 登录卡片（照参考设计：绿渐变 + 白卡 + 三框） -->
-      <div id="login-card" class="auth-card hidden">
-        <div class="brand">
-          <div class="brand-icon">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3z"/>
-              <path d="M8.5 12l2.5 2.5 4.5-5"/>
-            </svg>
-          </div>
-          <div>
-            <h1 class="brand-title">工作任务台</h1>
-            <p class="brand-sub">.团队任务协作平台</p>
-          </div>
-        </div>
-
-        <form id="login-form">
-          <label class="field">
-            <span class="field-label">人事编码 <em class="field-tip">如 8 位数字</em></span>
-            <input type="text" id="login-code" placeholder="请输入人事编码" autocomplete="username" required />
-          </label>
-          <label class="field">
-            <span class="field-label">姓名</span>
-            <input type="text" id="login-name" placeholder="请输入本人姓名" autocomplete="name" required />
-          </label>
-          <label class="field">
-            <span class="field-label">密码</span>
-            <span class="input-wrap">
-              <input type="password" id="login-pwd" placeholder="初始密码 123456" autocomplete="current-password" required />
-              <button type="button" class="eye" id="login-eye" aria-label="显示密码">👁</button>
-            </span>
-          </label>
-          <p id="login-msg" class="form-msg"></p>
-          <button type="submit" class="btn-login" id="login-submit">登录</button>
-          <p class="auth-hint">首次登录请使用初始密码 123456，登录后可在【我的】中修改。</p>
-        </form>
-      </div>
-
-      <!-- 初始化管理员卡片（成员表为空时出现） -->
-      <div id="init-card" class="auth-card hidden">
-        <div class="brand">
-          <div class="brand-icon">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2 4 5v6c0 5 3.4 8.5 8 11 4.6-2.5 8-6 8-11V5l-8-3z"/>
-              <path d="M8.5 12l2.5 2.5 4.5-5"/>
-            </svg>
-          </div>
-          <div>
-            <h1 class="brand-title">工作任务台</h1>
-            <p class="brand-sub">.初始化管理员账号</p>
-          </div>
-        </div>
-        <p class="auth-hint" style="margin-bottom:14px">尚未导入任何成员。请先创建你的管理员账号，登录后即可在“成员管理”中导入团队。</p>
-        <form id="init-form">
-          <label class="field">
-            <span class="field-label">人事编码</span>
-            <input type="text" id="init-code" placeholder="请输入你的人事编码" required />
-          </label>
-          <label class="field">
-            <span class="field-label">姓名</span>
-            <input type="text" id="init-name" placeholder="请输入你的姓名" required />
-          </label>
-          <label class="field">
-            <span class="field-label">设置登录密码</span>
-            <input type="password" id="init-pwd" placeholder="设置一个登录密码" required />
-          </label>
-          <label class="field">
-            <span class="field-label">确认密码</span>
-            <input type="password" id="init-pwd2" placeholder="再次输入密码" required />
-          </label>
-          <label class="field">
-            <span class="field-label">设置团队密钥 <em class="field-tip">用于加密任务内容</em></span>
-            <input type="password" id="init-teamkey" placeholder="设置一个团队密钥（之后要发给成员）" required />
-          </label>
-          <label class="field">
-            <span class="field-label">确认团队密钥</span>
-            <input type="password" id="init-teamkey2" placeholder="再次输入团队密钥" required />
-          </label>
-          <p id="init-msg" class="form-msg"></p>
-          <button type="submit" class="btn-login" id="init-submit">创建管理员并进入</button>
-        </form>
-      </div>
-    </section>
-
-    <!-- ===== 主应用 视图 ===== -->
-    <section id="main-view" class="main-view hidden">
+    <!-- ===== 主应用 视图（本地版：无需登录，打开即用） ===== -->
+    <section id="main-view" class="main-view">
       <header class="topbar">
         <div class="topbar-left">
           <span class="logo">📋 工作任务台</span>
         </div>
         <div class="topbar-right">
           <span id="user-name" class="user-name"></span>
-          <button class="btn btn-ghost" id="btn-admin">👥 成员管理</button>
           <button class="btn btn-ghost" id="btn-settings">我的</button>
-          <button class="btn btn-ghost" id="btn-logout">退出</button>
         </div>
       </header>
 
@@ -216,16 +129,16 @@
     </div>
   </div>
 
-  <!-- ===== 我的 弹窗（资料 + 改密码） ===== -->
+  <!-- ===== 我的设置 弹窗（显示名 + 微信推送，均存本机） ===== -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-card">
       <div class="modal-head">
-        <h2>我的</h2>
+        <h2>我的设置</h2>
         <button class="modal-close" data-close>×</button>
       </div>
       <form id="settings-form">
-        <label>姓名（显示用）
-          <input type="text" id="s-name" placeholder="你在团队中显示的名字" />
+        <label>我的名字（显示为该任务的添加人）
+          <input type="text" id="s-name" placeholder="如：阚斌" />
         </label>
         <label>微信推送令牌 (PushPlus)
           <input type="text" id="s-token" placeholder="在 pushplus.plus 获取的 token（留空则不推送）" />
@@ -234,109 +147,16 @@
           <input type="number" id="s-lead" min="1" max="720" value="24" />
         </label>
         <p class="form-hint">设置 PushPlus 令牌后，点顶部“🔔 推送到微信”可把临期/逾期任务发到你的微信。</p>
-        <div class="divider"></div>
-        <h3 class="sub-title">修改密码</h3>
-        <label>旧密码
-          <input type="password" id="cp-old" autocomplete="off" />
-        </label>
-        <label>新密码
-          <input type="password" id="cp-new" autocomplete="off" />
-        </label>
-        <label>确认新密码
-          <input type="password" id="cp-new2" autocomplete="off" />
-        </label>
         <p id="cp-msg" class="form-msg"></p>
         <div class="modal-foot">
-          <button type="button" class="btn btn-ghost" id="cp-btn">保存密码</button>
-          <button type="submit" class="btn btn-primary">保存资料</button>
+          <button type="submit" class="btn btn-primary">保存</button>
         </div>
       </form>
-      <div class="divider"></div>
-      <h3 class="sub-title">团队密钥（数据加密）</h3>
-      <p class="form-hint">任务内容以「团队密钥」加密后存于云端，Supabase 看不到明文。修改密钥会重新加密全部任务，请先把新密钥告知所有成员。</p>
-      <label>新团队密钥
-        <input type="password" id="rekey-new" placeholder="输入新的团队密钥" />
-      </label>
-      <label>确认新团队密钥
-        <input type="password" id="rekey-new2" placeholder="再次输入新团队密钥" />
-      </label>
-      <p id="rekey-msg" class="form-msg"></p>
-      <div class="modal-foot">
-        <button type="button" class="btn btn-ghost" id="rekey-btn">更新并重新加密</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== 成员管理 弹窗（仅管理员可见） ===== -->
-  <div id="admin-modal" class="modal hidden">
-    <div class="modal-card wide">
-      <div class="modal-head">
-        <h2>成员管理</h2>
-        <button class="modal-close" data-close>×</button>
-      </div>
-
-      <div class="admin-section">
-        <h3 class="sub-title">添加单个成员</h3>
-        <div class="inline-form">
-          <input type="text" id="am-code" placeholder="人事编码" />
-          <input type="text" id="am-name" placeholder="姓名" />
-          <button class="btn btn-primary" id="am-add">添加</button>
-        </div>
-        <p class="form-hint">新成员初始密码统一为 123456，登录后可在【我的】中修改。</p>
-      </div>
-
-      <div class="admin-section">
-        <h3 class="sub-title">批量导入</h3>
-        <p class="form-hint">每行一个，格式：<b>人事编码,姓名</b>（逗号或空格分隔均可）。例如：</p>
-        <textarea id="am-bulk" rows="4" placeholder="10000001,张三&#10;10000002,李四"></textarea>
-        <button class="btn btn-primary" id="am-bulk-add">批量导入</button>
-      </div>
-
-      <div class="admin-section">
-        <h3 class="sub-title">成员列表</h3>
-        <div id="am-list" class="am-list"></div>
-      </div>
-      <p id="am-msg" class="form-msg"></p>
-    </div>
-  </div>
-
-  <!-- ===== 团队密钥解锁 / 创建 弹窗（不可点背景关闭） ===== -->
-  <div id="teamkey-modal" class="modal hidden" data-noclose>
-    <div class="modal-card">
-      <div class="modal-head">
-        <h2>团队密钥</h2>
-      </div>
-      <p class="form-hint">任务内容已加密保存在云端。请输入管理员提供的「团队密钥」以解锁查看。该密钥只保存在你本机浏览器，不会上传。</p>
-      <label>团队密钥
-        <input type="password" id="teamkey-input" placeholder="请输入团队密钥" />
-      </label>
-      <p id="teamkey-msg" class="form-msg"></p>
-      <div class="modal-foot">
-        <button type="button" class="btn btn-primary" id="teamkey-submit">解锁</button>
-      </div>
-
-      <!-- 管理员首次设置：创建团队密钥（默认隐藏，仅管理员首次出现） -->
-      <div id="teamkey-create" class="hidden">
-        <div class="divider"></div>
-        <h3 class="sub-title">创建团队密钥（首次设置）</h3>
-        <p class="form-hint">你是管理员且本机尚未保存团队密钥。请创建一个团队密钥（之后要发给所有成员），用于在云端加密任务内容。团队成员在登录后同样需要输入这把密钥才能看到任务。</p>
-        <label>新团队密钥
-          <input type="password" id="tk-new" placeholder="设置一个团队密钥" />
-        </label>
-        <label>确认团队密钥
-          <input type="password" id="tk-new2" placeholder="再次输入" />
-        </label>
-        <p id="tk-create-msg" class="form-msg"></p>
-        <div class="modal-foot">
-          <button type="button" class="btn btn-primary" id="tk-create-btn">创建并解锁</button>
-        </div>
-      </div>
     </div>
   </div>
 
   <!-- 第三方库（UMD 全局） -->
   <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1/Sortable.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>

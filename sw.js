@@ -1,5 +1,5 @@
 /* 工作任务台 · Service Worker（导航走网络优先，避免部署后被旧缓存卡住） */
-const CACHE = 'wtb-v3';
+const CACHE = 'wtb-v4';
 const SHELL = ['./', './index.html', './assets/styles.css', './assets/app.js', './assets/config.js', './assets/icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {

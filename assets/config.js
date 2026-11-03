@@ -1,9 +1,8 @@
-/* 工作任务台 · 配置（Supabase 免费版，无需付费）
- * 数据存于你的 Supabase 项目（vjcjhfvxrjbotnggqzec）。
- * SUPABASE_ANON_KEY 是 publishable 公开密钥（等同旧版 anon key），可安全放在前端。
- * 真正的私密密钥是 service_role，请勿填在此处、也不要发给任何人。
+/* 工作任务台 · 配置
+ * 当前为「本地版」：数据保存在你本机浏览器(localStorage)，无需数据库、无需登录，打开即用。
+ * 后续若要开启「团队共享 + 云端同步」，再切回 Supabase 模式（届时恢复 network 层即可）。
  */
 window.APP_CONFIG = {
-  SUPABASE_URL: 'https://vjcjhfvxrjbotnggqzec.supabase.co',
-  SUPABASE_ANON_KEY: 'sb_publishable_mIjNId82zmRh38fIu8ixzw_b8ZwdXAw'
+  STORAGE_MODE: 'local',   // 'local' = 本机存储；'supabase' = 云端（待接入）
+  APP_NAME: '工作任务台'
 };

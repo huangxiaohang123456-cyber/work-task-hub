@@ -4,8 +4,8 @@
   "description": "团队共享的日/周/月工作任务清单，支持临期微信提醒",
   "start_url": ".",
   "display": "standalone",
-  "background_color": "#f4f6fb",
-  "theme_color": "#2563eb",
+  "background_color": "#f5f6f8",
+  "theme_color": "#f2802f",
   "icons": [
     { "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]

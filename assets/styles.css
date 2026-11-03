@@ -77,7 +77,6 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .tag{background:var(--primary-l);color:var(--primary-d);padding:2px 9px;border-radius:999px;font-size:11px}
 .due.soon{color:var(--amber);font-weight:600}
 .due.over{color:var(--red);font-weight:700}
-.rec{border:1px solid var(--line);padding:1px 8px;border-radius:6px}
 .task-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
 .status-select{padding:6px 8px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:#fff;flex:1}
 .icon-btn{background:transparent;border:none;font-size:16px;color:var(--muted);padding:4px 6px}

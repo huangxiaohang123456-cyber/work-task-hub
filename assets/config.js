@@ -1,8 +1,11 @@
 /* 工作任务台 · 配置
- * 当前为「本地版」：数据保存在你本机浏览器(localStorage)，无需数据库、无需登录，打开即用。
- * 后续若要开启「团队共享 + 云端同步」，再切回 Supabase 模式（届时恢复 network 层即可）。
+ * 团队共享版：数据存于你的 Supabase 项目（云端共享，任何人打开网址即可查看/编辑）。
+ * 无登录、无浏览器端加密。前端用 publishable(等同 anon) 密钥直连 REST。
+ * 真正的私密密钥是 service_role，请勿填在此处、也不要发给任何人。
  */
 window.APP_CONFIG = {
-  STORAGE_MODE: 'local',   // 'local' = 本机存储；'supabase' = 云端（待接入）
+  STORAGE_MODE: 'supabase',
+  SUPABASE_URL: 'https://vjcjhfvxrjbotnggqzec.supabase.co',
+  SUPABASE_ANON_KEY: 'sb_publishable_mIjNId82zmRh38fIu8ixzw_b8ZwdXAw',
   APP_NAME: '工作任务台'
 };

@@ -25,6 +25,21 @@
   const emptyHint = $('#empty-hint');
   const reminderBanner = $('#reminder-banner');
 
+  // ---------- 带重试的 fetch（仅网络层失败时重试，业务 4xx/5xx 不重试） ----------
+  async function netFetch(url, opt, retries) {
+    retries = (retries == null) ? 3 : retries;
+    let lastErr;
+    for (let i = 0; i <= retries; i++) {
+      try {
+        return await fetch(url, opt);
+      } catch (e) {
+        lastErr = e;
+        if (i < retries) await new Promise((r) => setTimeout(r, 800 * Math.pow(2, i))); // 800/1600/3200ms 退避
+      }
+    }
+    throw lastErr || new Error('network error');
+  }
+
   // ---------- Supabase REST（数据，需登录：请求带用户 JWT） ----------
   async function supa(method, path, body) {
     const token = state.session ? state.session.access_token : KEY;
@@ -39,7 +54,7 @@
       headers['Prefer'] = 'return=representation';
       opt.body = JSON.stringify(body);
     }
-    const res = await fetch(URL + '/rest/v1/' + path, opt);
+    const res = await netFetch(URL + '/rest/v1/' + path, opt);
     if (res.status === 401) { clearSession(); showAuth(); throw new Error('AUTH_EXPIRED'); }
     if (!res.ok) {
       let txt = '';
@@ -55,7 +70,7 @@
     const headers = { 'apikey': KEY, 'Accept': 'application/json' };
     const opt = { method, headers };
     if (body !== undefined) { headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
-    const res = await fetch(URL + path, opt);
+    const res = await netFetch(URL + path, opt);
     let data = null;
     try { data = await res.json(); } catch (e) { /* ignore */ }
     if (!res.ok) {
@@ -106,6 +121,23 @@
   function saveSession(s) { state.session = s; try { localStorage.setItem(LS_SESSION, JSON.stringify(s)); } catch (e) { /* ignore */ } }
   function loadSession() { try { const r = localStorage.getItem(LS_SESSION); if (r) state.session = JSON.parse(r); } catch (e) { /* ignore */ } }
   function clearSession() { state.session = null; try { localStorage.removeItem(LS_SESSION); } catch (e) { /* ignore */ } }
+
+  // ---------- 任务本地缓存（离线兜底，按用户隔离） ----------
+  function cacheKey() {
+    const id = state.session && state.session.user ? state.session.user.id : null;
+    return id ? 'wtb_tasks_cache_' + id : null;
+  }
+  function saveTasksCache() {
+    const k = cacheKey(); if (!k) return;
+    try { localStorage.setItem(k, JSON.stringify(state.tasks)); } catch (e) { /* ignore */ }
+  }
+  function loadTasksCache() {
+    const k = cacheKey(); if (!k) return null;
+    try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : null; } catch (e) { return null; }
+  }
+  function clearTasksCache() {
+    const k = cacheKey(); if (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  }
 
   function showAuth() { $('#auth-view').classList.remove('hidden'); $('#app').classList.add('hidden'); }
   function showApp() { $('#auth-view').classList.add('hidden'); $('#app').classList.remove('hidden'); applyUserLabels(); }
@@ -184,6 +216,8 @@
     $('#me-display').textContent = state.profile.name || '我';
     $('#rem-lead').textContent = state.profile.remind_lead_hours || 24;
 
+    const rb = $('#btn-retry');
+    if (rb) rb.addEventListener('click', () => { hideOfflineBanner(); loadTasks(); });
     $('#fab').addEventListener('click', () => openTaskModal(null));
     await boot();
   }
@@ -195,17 +229,35 @@
     try {
       const data = await supa('GET', 'tasks?select=*&order=created_at.asc');
       state.tasks = data || [];
+      saveTasksCache();
+      hideOfflineBanner();
     } catch (e) {
       const m = e.message || '';
       if (/AUTH_EXPIRED|401/.test(m)) return; // supa 已切到登录页
-      if (/404|relation|does not exist|42P01/i.test(m)) {
-        alert('⚠️ 还没建表：请到 Supabase 后台 SQL Editor 运行项目里的 supabase/schema.sql 一次（只需一次）。');
+      const cached = loadTasksCache();
+      if (cached && cached.length) {
+        state.tasks = cached;
+        showOfflineBanner('⚠️ 网络不太稳定，当前显示的是上次缓存的任务（可能不是最新），点“重试”可再次尝试连接。');
+      } else if (/404|relation|does not exist|42P01/i.test(m)) {
+        showOfflineBanner('⚠️ 还没建表：请到 Supabase 后台 SQL Editor 运行项目里的 supabase/schema.sql 一次（只需一次）。');
+        state.tasks = [];
       } else {
-        alert('加载任务失败：' + m);
+        showOfflineBanner('⚠️ 加载失败（网络问题）：' + m + '，点“重试”再试一次。');
+        state.tasks = [];
       }
-      state.tasks = [];
     }
     renderTasks(); renderStats(); renderRemind();
+  }
+
+  function showOfflineBanner(text) {
+    const b = $('#offline-banner');
+    if (!b) return;
+    $('#offline-text').textContent = text;
+    b.classList.remove('hidden');
+  }
+  function hideOfflineBanner() {
+    const b = $('#offline-banner');
+    if (b) b.classList.add('hidden');
   }
 
   // ============================================================
@@ -629,6 +681,7 @@
   async function logout() {
     await doSignOut();
     clearSession();
+    clearTasksCache();
     state.tasks = [];
     showAuth();
   }

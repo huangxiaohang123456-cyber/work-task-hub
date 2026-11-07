@@ -1,8 +1,8 @@
 /* ============================================================
- * 工作任务台 · 前端逻辑（团队共享版 · 零外部依赖）
- * 数据存于 Supabase（云端共享），任何人打开网址即可查看/添加/修改/完成任务。
- * 无登录、无浏览器端加密。第三方库一律不用：日期用原生 JS、图表用 CSS、导出用 CSV、
- * Supabase 用原生 fetch 直连 REST。这样彻底避免 CDN 被墙导致脚本加载失败、按钮无响应。
+ * 工作任务台 · 前端逻辑（登录隔离版 · 零外部依赖）
+ * 数据存于 Supabase，每用户数据隔离（RLS）。
+ * 登录用 Supabase 自带邮箱/密码 Auth；任务读写用 REST，请求带用户 JWT。
+ * 无第三方库：日期原生 JS、图表 CSS、导出 CSV、Auth/REST 均用原生 fetch。
  * ============================================================ */
 (function () {
   'use strict';
@@ -11,9 +11,11 @@
   const URL = cfg.SUPABASE_URL;
   const KEY = cfg.SUPABASE_ANON_KEY;
   const LS_PROFILE = 'wtb_profile_v1';
+  const LS_SESSION = 'wtb_session_v1';
 
   const state = {
     profile: { name: '', pushplus_token: '', remind_lead_hours: 24 },
+    session: null,
     tasks: [],
     filters: { view: 'all', priority: '', search: '' }
   };
@@ -23,11 +25,12 @@
   const emptyHint = $('#empty-hint');
   const reminderBanner = $('#reminder-banner');
 
-  // ---------- Supabase REST 直连（无需 supabase-js 库） ----------
+  // ---------- Supabase REST（数据，需登录：请求带用户 JWT） ----------
   async function supa(method, path, body) {
+    const token = state.session ? state.session.access_token : KEY;
     const headers = {
       'apikey': KEY,
-      'Authorization': 'Bearer ' + KEY,
+      'Authorization': 'Bearer ' + token,
       'Accept': 'application/json'
     };
     const opt = { method, headers };
@@ -37,6 +40,7 @@
       opt.body = JSON.stringify(body);
     }
     const res = await fetch(URL + '/rest/v1/' + path, opt);
+    if (res.status === 401) { clearSession(); showAuth(); throw new Error('AUTH_EXPIRED'); }
     if (!res.ok) {
       let txt = '';
       try { txt = await res.text(); } catch (e) { /* ignore */ }
@@ -44,6 +48,82 @@
     }
     const ct = res.headers.get('content-type') || '';
     return ct.includes('application/json') ? res.json() : null;
+  }
+
+  // ---------- Supabase Auth（登录，不需要用户 JWT） ----------
+  async function authReq(method, path, body) {
+    const headers = { 'apikey': KEY, 'Accept': 'application/json' };
+    const opt = { method, headers };
+    if (body !== undefined) { headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
+    const res = await fetch(URL + path, opt);
+    let data = null;
+    try { data = await res.json(); } catch (e) { /* ignore */ }
+    if (!res.ok) {
+      const msg = (data && (data.message || data.error_description || (data.error && data.error.message))) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  function normalizeSession(resp, userObj) {
+    const u = userObj || resp.user || {};
+    return {
+      access_token: resp.access_token,
+      refresh_token: resp.refresh_token,
+      expires_in: resp.expires_in || 3600,
+      user: { id: u.id, email: u.email }
+    };
+  }
+
+  async function doSignUp(email, password) {
+    const resp = await authReq('POST', '/auth/v1/signup', { email, password });
+    if (resp.data && resp.data.session) return normalizeSession(resp.data.session, resp.data.user);
+    if (resp.data && resp.data.user && !resp.data.session)
+      throw new Error('注册成功，但需先去邮箱确认（请在后台关闭 Confirm email 后重试）');
+    return normalizeSession(resp, resp.user);
+  }
+
+  async function doSignIn(email, password) {
+    const resp = await authReq('POST', '/auth/v1/token?grant_type=password', { email, password });
+    return normalizeSession(resp, resp.user);
+  }
+
+  async function refreshSession(refresh_token) {
+    const resp = await authReq('POST', '/auth/v1/token?grant_type=refresh_token', { refresh_token });
+    return normalizeSession(resp, resp.user);
+  }
+
+  async function doSignOut() {
+    try {
+      await fetch(URL + '/auth/v1/logout', {
+        method: 'POST',
+        headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + (state.session ? state.session.access_token : '') }
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  // ---------- 会话存储 ----------
+  function saveSession(s) { state.session = s; try { localStorage.setItem(LS_SESSION, JSON.stringify(s)); } catch (e) { /* ignore */ } }
+  function loadSession() { try { const r = localStorage.getItem(LS_SESSION); if (r) state.session = JSON.parse(r); } catch (e) { /* ignore */ } }
+  function clearSession() { state.session = null; try { localStorage.removeItem(LS_SESSION); } catch (e) { /* ignore */ } }
+
+  function showAuth() { $('#auth-view').classList.remove('hidden'); $('#app').classList.add('hidden'); }
+  function showApp() { $('#auth-view').classList.add('hidden'); $('#app').classList.remove('hidden'); applyUserLabels(); }
+
+  function applyUserLabels() {
+    const email = state.session && state.session.user ? state.session.user.email : '';
+    if ($('#me-email')) $('#me-email').textContent = email;
+    $('#me-display').textContent = state.profile.name || email || '我';
+  }
+
+  async function boot() {
+    loadSession();
+    if (state.session && state.session.refresh_token) {
+      try { saveSession(await refreshSession(state.session.refresh_token)); }
+      catch (e) { /* 刷新失败则用原 token 试一次 */ }
+    }
+    if (state.session && state.session.access_token) { showApp(); await loadTasks(); }
+    else { showAuth(); }
   }
 
   // ---------- 本地存储（仅存个人设置） ----------
@@ -95,6 +175,7 @@
     bindModals();
     bindTaskForm();
     bindSettingsForm();
+    bindAuth();
     registerSW();
 
     $('#me-name').value = state.profile.name || '';
@@ -104,7 +185,7 @@
     $('#rem-lead').textContent = state.profile.remind_lead_hours || 24;
 
     $('#fab').addEventListener('click', () => openTaskModal(null));
-    await loadTasks();
+    await boot();
   }
 
   // ============================================================
@@ -116,6 +197,7 @@
       state.tasks = data || [];
     } catch (e) {
       const m = e.message || '';
+      if (/AUTH_EXPIRED|401/.test(m)) return; // supa 已切到登录页
       if (/404|relation|does not exist|42P01/i.test(m)) {
         alert('⚠️ 还没建表：请到 Supabase 后台 SQL Editor 运行项目里的 supabase/schema.sql 一次（只需一次）。');
       } else {
@@ -289,6 +371,7 @@
         } else {
           row.creator_name = state.profile.name || '匿名';
           row.created_at = new Date().toISOString();
+          row.user_id = state.session ? state.session.user.id : null;
           const data = await supa('POST', 'tasks', row);
           const created = Array.isArray(data) && data[0];
           state.tasks.push(created || Object.assign({ id: 'tmp_' + Date.now() }, row));
@@ -500,10 +583,54 @@
       state.profile.pushplus_token = $('#me-token').value.trim();
       state.profile.remind_lead_hours = parseInt($('#me-lead').value, 10) || 24;
       saveProfile();
-      $('#me-display').textContent = state.profile.name || '我';
+      applyUserLabels();
       $('#rem-lead').textContent = state.profile.remind_lead_hours;
       alert('✅ 已保存');
     });
+  }
+
+  // ============================================================
+  // 登录 / 注册
+  // ============================================================
+  let authMode = 'login';
+  function bindAuth() {
+    $('#tab-login').addEventListener('click', () => setAuthMode('login'));
+    $('#tab-register').addEventListener('click', () => setAuthMode('register'));
+    $('#auth-form').addEventListener('submit', onAuthSubmit);
+    $('#btn-logout').addEventListener('click', logout);
+  }
+  function setAuthMode(m) {
+    authMode = m;
+    $('#tab-login').classList.toggle('active', m === 'login');
+    $('#tab-register').classList.toggle('active', m === 'register');
+    $('#auth-submit').textContent = m === 'login' ? '登录' : '注册';
+    $('#auth-msg').textContent = '';
+  }
+  async function onAuthSubmit(e) {
+    e.preventDefault();
+    const email = $('#auth-email').value.trim();
+    const password = $('#auth-password').value;
+    const msg = $('#auth-msg');
+    msg.textContent = '';
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = '请输入有效的邮箱'; return; }
+    if (password.length < 6) { msg.textContent = '密码至少 6 位'; return; }
+    $('#auth-submit').disabled = true;
+    try {
+      const s = authMode === 'login' ? await doSignIn(email, password) : await doSignUp(email, password);
+      saveSession(s);
+      showApp();
+      await loadTasks();
+    } catch (err) {
+      msg.textContent = err.message || String(err);
+    } finally {
+      $('#auth-submit').disabled = false;
+    }
+  }
+  async function logout() {
+    await doSignOut();
+    clearSession();
+    state.tasks = [];
+    showAuth();
   }
 
   // ============================================================

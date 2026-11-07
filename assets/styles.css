@@ -14,6 +14,11 @@ body{
   -webkit-text-size-adjust:100%;
 }
 .hidden{display:none !important}
+
+/* ---------- 离线/错误横幅 ---------- */
+.banner{display:flex;align-items:center;gap:10px;margin:12px 14px 0;padding:10px 12px;border-radius:11px;font-size:13px;font-weight:600;line-height:1.45}
+.banner.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}
+.banner .btn-mini{margin-left:auto;flex:none;background:var(--primary);color:#fff;border-radius:9px;padding:6px 14px;font-size:13px;font-weight:700}
 button{font-family:inherit;cursor:pointer;border:none;background:none}
 input,select,textarea{font-family:inherit;font-size:15px}
 label{display:block;font-size:13px;color:var(--muted);margin-bottom:12px}

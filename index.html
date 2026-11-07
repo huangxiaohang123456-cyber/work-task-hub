@@ -10,7 +10,32 @@
   <link rel="stylesheet" href="assets/styles.css" />
 </head>
 <body>
-  <div id="app">
+
+  <!-- ============ 登录 / 注册 界面 ============ -->
+  <div id="auth-view" class="auth-view hidden">
+    <div class="auth-card">
+      <div class="auth-logo">📋</div>
+      <h1 class="auth-title">工作任务台</h1>
+      <p class="auth-sub">用邮箱注册登录，管理你自己的工作任务</p>
+      <div class="auth-tabs">
+        <button id="tab-login" type="button" class="auth-tab active">登录</button>
+        <button id="tab-register" type="button" class="auth-tab">注册</button>
+      </div>
+      <form id="auth-form">
+        <label>邮箱
+          <input type="email" id="auth-email" placeholder="QQ / 163 邮箱" autocomplete="email" />
+        </label>
+        <label>密码
+          <input type="password" id="auth-password" placeholder="至少 6 位" autocomplete="current-password" />
+        </label>
+        <p id="auth-msg" class="form-msg"></p>
+        <button type="submit" class="btn-primary block" id="auth-submit">登录</button>
+      </form>
+      <p class="auth-foot">注册即表示同意将数据安全存于云端，仅你本人可见</p>
+    </div>
+  </div>
+
+  <div id="app" class="hidden">
 
     <!-- 顶部标题栏 -->
     <header class="app-header">
@@ -90,7 +115,12 @@
       <!-- ============ 我的页 ============ -->
       <section id="page-me" class="page">
         <div class="panel">
-          <h3 class="panel-title">我的</h3>
+          <h3 class="panel-title">账号</h3>
+          <p class="hint">已登录：<span id="me-email"></span></p>
+          <button class="btn-ghost block" id="btn-logout">退出登录</button>
+        </div>
+        <div class="panel">
+          <h3 class="panel-title">我的资料</h3>
           <label>我的名字（用于标注“添加人”）
             <input type="text" id="me-name" placeholder="如：阚斌" />
           </label>
@@ -101,7 +131,7 @@
             <input type="number" id="me-lead" min="1" max="720" value="24" />
           </label>
           <button class="btn-primary block" id="btn-save-me">保存</button>
-          <p class="hint">数据存于云端，团队成员打开同一网址即可共享查看与编辑。本页名字仅用于标注添加人，不做登录。</p>
+          <p class="hint">数据仅你本人可见（登录隔离）。本页名字仅用于标注添加人，不做登录。</p>
         </div>
       </section>
 

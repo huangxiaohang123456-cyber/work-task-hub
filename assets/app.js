@@ -279,7 +279,6 @@
     const now = new Date();
     if (v === 'all') return true;
     if (v === 'overdue') return t.due_date && isBefore(t.due_date, now) && t.status !== 'done';
-    if (v === 'none') return !t.due_date;
     if (!t.due_date) return false;
     const d = new Date(t.due_date);
     if (v === 'today') return d >= startOfDay(now) && d <= endOfDay(now);

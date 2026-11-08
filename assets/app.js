@@ -224,7 +224,6 @@
       bindAuth();
       registerSW();
 
-      $('#me-name').value = state.profile.name || '';
       $('#me-display').textContent = state.profile.name || '我';
 
       const rb = $('#btn-retry');
@@ -326,7 +325,6 @@
             ${t.reminded_at ? `<span class="rem-sent">📧 已提醒</span>` : ''}
             ${recLabel(t.recurrence)}
             ${(t.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}
-            ${t.creator_name ? `<span>👤 ${esc(t.creator_name)}</span>` : ''}
           </div>
         </div>
         <div class="task-actions">
@@ -426,7 +424,6 @@
           if (t) Object.assign(t, row);
           await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(id), row);
         } else {
-          row.creator_name = state.profile.name || '匿名';
           row.created_at = new Date().toISOString();
           row.user_id = state.session ? state.session.user.id : null;
           const data = await supa('POST', 'tasks', row);
@@ -554,7 +551,7 @@
   // ============================================================
   function exportExcel() {
     if (!state.tasks.length) { alert('当前没有任务可导出'); return; }
-    const head = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '添加人', '创建时间', '完成时间'];
+    const head = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '创建时间', '完成时间'];
     let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
       + '<head><meta charset="utf-8"><style>td,th{border:1px solid #ccc;padding:4px 8px;}th{background:#f2802f;color:#fff;}</style></head><body><table>';
     html += '<tr>' + head.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
@@ -562,7 +559,7 @@
       const row = [
         t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
         fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status),
-        t.creator_name || '', fmt(t.created_at), fmt(t.completed_at)
+        fmt(t.created_at), fmt(t.completed_at)
       ];
       html += '<tr>' + row.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>';
     });
@@ -594,12 +591,6 @@
   // 我的（设置）
   // ============================================================
   function bindSettingsForm() {
-    $('#btn-save-me').addEventListener('click', () => {
-      state.profile.name = $('#me-name').value.trim();
-      saveProfile();
-      applyUserLabels();
-      alert('✅ 已保存');
-    });
     $('#btn-export').addEventListener('click', exportExcel);
   }
 

@@ -14,7 +14,7 @@
   const LS_SESSION = 'wtb_session_v1';
 
   const state = {
-    profile: { name: '', pushplus_token: '', remind_lead_hours: 24 },
+    profile: { name: '' },
     session: null,
     tasks: [],
     filters: { view: 'all', priority: '', search: '' }
@@ -23,7 +23,6 @@
   const $ = (s) => document.querySelector(s);
   const taskList = $('#task-list');
   const emptyHint = $('#empty-hint');
-  const reminderBanner = $('#reminder-banner');
 
   // ---------- 带重试的 fetch（仅网络层失败时重试，业务 4xx/5xx 不重试） ----------
   async function netFetch(url, opt, retries) {
@@ -211,10 +210,7 @@
     registerSW();
 
     $('#me-name').value = state.profile.name || '';
-    $('#me-token').value = state.profile.pushplus_token || '';
-    $('#me-lead').value = state.profile.remind_lead_hours || 24;
     $('#me-display').textContent = state.profile.name || '我';
-    $('#rem-lead').textContent = state.profile.remind_lead_hours || 24;
 
     const rb = $('#btn-retry');
     if (rb) rb.addEventListener('click', () => { hideOfflineBanner(); loadTasks(); });
@@ -246,7 +242,7 @@
         state.tasks = [];
       }
     }
-    renderTasks(); renderStats(); renderRemind();
+    renderTasks(); renderStats();
   }
 
   function showOfflineBanner(text) {
@@ -308,6 +304,7 @@
           ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
           <div class="task-meta">
             ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
+            ${t.remind_at ? `<span class="rem">🔔 ${fmt(t.remind_at)}</span>` : ''}
             ${recLabel(t.recurrence)}
             ${(t.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}
             ${t.creator_name ? `<span>👤 ${esc(t.creator_name)}</span>` : ''}
@@ -327,7 +324,6 @@
 
     bindTaskItemEvents();
     updateTaskStats();
-    updateBanner();
   }
 
   function updateTaskStats() {
@@ -345,22 +341,6 @@
     $('#sc-over').textContent = c.over;
   }
 
-  function updateBanner() {
-    const now = new Date();
-    const lead = state.profile.remind_lead_hours || 24;
-    const soonCut = new Date(now.getTime() + lead * 3600 * 1000);
-    let over = 0, soon = 0;
-    state.tasks.forEach((t) => {
-      if (!t.due_date || t.status === 'done') return;
-      const d = new Date(t.due_date);
-      if (isBefore(d, now)) over++;
-      else if (d < soonCut) soon++;
-    });
-    if (!over && !soon) { reminderBanner.classList.add('hidden'); return; }
-    reminderBanner.innerHTML = `🔔 <b>待办提醒</b>：${over ? over + ' 个已逾期 ' : ''}${soon ? soon + ' 个即将到期' : ''}。可在「提醒」页推送到微信。`;
-    reminderBanner.classList.remove('hidden');
-  }
-
   function bindTaskItemEvents() {
     taskList.querySelectorAll('.status-select').forEach((sel) => {
       sel.addEventListener('change', async () => {
@@ -372,7 +352,7 @@
         try {
           await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(t.id), { status: v, completed_at: t.completed_at });
         } catch (e) { alert('更新失败：' + (e.message || e)); }
-        renderTasks(); renderStats(); renderRemind();
+        renderTasks(); renderStats();
       });
     });
     taskList.querySelectorAll('[data-edit]').forEach((b) => {
@@ -386,7 +366,7 @@
           await supa('DELETE', 'tasks?id=eq.' + encodeURIComponent(id));
           state.tasks = state.tasks.filter((t) => t.id !== id);
         } catch (e) { return alert('删除失败：' + (e.message || e)); }
-        renderTasks(); renderStats(); renderRemind();
+        renderTasks(); renderStats();
       });
     });
   }
@@ -400,6 +380,8 @@
       const id = $('#task-id').value;
       const dueVal = $('#f-due').value;
       const dueIso = dueVal ? new Date(dueVal).toISOString() : null;
+      const remVal = $('#f-remind').value;
+      const remIso = remVal ? new Date(remVal).toISOString() : null;
       const tags = $('#f-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
       const title = $('#f-title').value.trim();
       const msg = $('#task-form-msg');
@@ -414,6 +396,7 @@
         recurrence: $('#f-recurrence').value,
         tags
       };
+      if (remIso) row.remind_at = remIso; // 仅当设置了提醒时间才发送该字段（列未建前不影响普通任务）
       if (status === 'done') row.completed_at = new Date().toISOString();
       try {
         if (id) {
@@ -430,7 +413,7 @@
         }
       } catch (err) { msg.textContent = '保存失败：' + (err.message || err); return; }
       closeModal('#task-modal');
-      renderTasks(); renderStats(); renderRemind();
+      renderTasks(); renderStats();
     });
   }
 
@@ -447,6 +430,7 @@
       $('#f-status').value = t.status;
       $('#f-due').value = t.due_date ? toLocalInput(t.due_date) : '';
       $('#f-recurrence').value = t.recurrence;
+      $('#f-remind').value = t.remind_at ? toLocalInput(t.remind_at) : '';
       $('#f-tags').value = (t.tags || []).join(', ');
     } else {
       $('#task-modal-title').textContent = '添加任务';
@@ -455,6 +439,7 @@
       $('#f-priority').value = 'medium';
       $('#f-status').value = 'todo';
       $('#f-recurrence').value = 'none';
+      $('#f-remind').value = '';
     }
     openModal('#task-modal');
   }
@@ -490,7 +475,6 @@
     $('#filter-priority').addEventListener('change', (e) => { state.filters.priority = e.target.value; renderTasks(); });
     $('#filter-search').addEventListener('input', (e) => { state.filters.search = e.target.value.trim(); renderTasks(); });
     $('#btn-export').addEventListener('click', exportCSV);
-    $('#btn-push').addEventListener('click', pushWeChat);
   }
 
   // ============================================================
@@ -545,72 +529,14 @@
   }
 
   // ============================================================
-  // 提醒页
-  // ============================================================
-  function renderRemind() {
-    const now = new Date();
-    const lead = state.profile.remind_lead_hours || 24;
-    const soonCut = new Date(now.getTime() + lead * 3600 * 1000);
-    const over = [], soon = [];
-    state.tasks.forEach((t) => {
-      if (!t.due_date || t.status === 'done') return;
-      const d = new Date(t.due_date);
-      if (isBefore(d, now)) over.push(t);
-      else if (d < soonCut) soon.push(t);
-    });
-    over.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
-    soon.sort((a, b) => new Date(a.due_date) - new Date(b.due_date));
-    const box = $('#remind-list');
-    box.innerHTML = '';
-    if (!over.length && !soon.length) { box.innerHTML = '<p class="hint">暂无逾期或临近任务，继续保持 🎉</p>'; return; }
-    [...over.map((t) => ['over', t]), ...soon.map((t) => ['soon', t])].forEach(([cls, t]) => {
-      const div = document.createElement('div');
-      div.className = 'remind-item ' + cls;
-      div.innerHTML = `<span class="dot"></span><div class="ri-main"><div class="ri-title">${esc(t.title)}</div><div class="ri-sub">${cls === 'over' ? '已逾期' : '即将到期'} · 截止 ${fmt(t.due_date)} · ${priText(t.priority)}</div></div>`;
-      box.appendChild(div);
-    });
-    $('#rem-lead').textContent = lead;
-  }
-
-  async function pushWeChat() {
-    const token = state.profile.pushplus_token;
-    if (!token) { alert('请先在「我的」中填写 PushPlus 令牌。'); switchPage('me'); return; }
-    const now = new Date();
-    const lead = state.profile.remind_lead_hours || 24;
-    const soonCut = new Date(now.getTime() + lead * 3600 * 1000);
-    const over = [], soon = [];
-    state.tasks.forEach((t) => {
-      if (!t.due_date || t.status === 'done') return;
-      const d = new Date(t.due_date);
-      if (isBefore(d, now)) over.push(t);
-      else if (d < soonCut) soon.push(t);
-    });
-    if (!over.length && !soon.length) { alert('当前没有临期或逾期任务，无需推送。'); return; }
-    const lines = [...over, ...soon].map((t) => {
-      const tag = over.includes(t) ? '【逾期】' : '【临近】';
-      return `<p>${tag} <b>${esc(t.title)}</b> 截止 ${fmt(t.due_date)} · ${priText(t.priority)} · ${esc(t.creator_name || '')}</p>`;
-    }).join('');
-    try {
-      const res = await fetch('https://www.pushplus.plus/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, title: '工作任务台 · 待办提醒', content: lines, template: 'html' })
-      });
-      const data = await res.json();
-      if (data.code === 200) alert('✅ 已推送到微信');
-      else alert('推送失败：' + (data.msg || JSON.stringify(data)));
-    } catch (e) { alert('推送请求出错：' + e.message); }
-  }
-
-  // ============================================================
   // 导出 CSV（Excel 可直接打开，无需 XLSX 库）
   // ============================================================
   function exportCSV() {
-    const head = ['标题', '描述', '优先级', '标签', '截止日期', '周期', '状态', '添加人', '创建时间', '完成时间'];
+    const head = ['标题', '描述', '优先级', '标签', '截止日期', '提醒时间', '周期', '状态', '添加人', '创建时间', '完成时间'];
     const rows = [head];
     state.tasks.forEach((t) => rows.push([
       t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
-      fmt(t.due_date), recText(t.recurrence), statusText(t.status), t.creator_name || '',
+      fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status), t.creator_name || '',
       fmt(t.created_at), fmt(t.completed_at)
     ]));
     const csv = '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
@@ -632,11 +558,8 @@
   function bindSettingsForm() {
     $('#btn-save-me').addEventListener('click', () => {
       state.profile.name = $('#me-name').value.trim();
-      state.profile.pushplus_token = $('#me-token').value.trim();
-      state.profile.remind_lead_hours = parseInt($('#me-lead').value, 10) || 24;
       saveProfile();
       applyUserLabels();
-      $('#rem-lead').textContent = state.profile.remind_lead_hours;
       alert('✅ 已保存');
     });
   }

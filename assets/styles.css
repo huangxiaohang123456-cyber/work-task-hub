@@ -83,17 +83,14 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .tag{background:var(--primary-l);color:var(--primary-d);padding:2px 9px;border-radius:999px;font-size:11px}
 .due.soon{color:var(--amber);font-weight:600}
 .due.over{color:var(--red);font-weight:700}
+.rem{color:var(--primary);font-weight:600}
 .task-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
 .status-select{padding:6px 8px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:#fff;flex:1}
 .icon-btn{background:transparent;border:none;font-size:16px;color:var(--muted);padding:4px 6px}
 .icon-btn:hover{color:var(--primary)}
 .empty-hint{text-align:center;color:var(--muted);padding:40px 16px}
 
-/* ---------- 提醒横幅 ---------- */
-.reminder-banner{margin-top:14px;padding:12px 14px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:14px}
-.reminder-banner b{color:var(--red)}
-
-/* ---------- 面板（统计/提醒/我的） ---------- */
+/* ---------- 面板（统计/我的） ---------- */
 .panel{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
 .panel-title{font-size:15px;font-weight:700;margin:4px 0 12px}
 .panel-title:not(:first-child){margin-top:18px}
@@ -113,18 +110,6 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .trend .col .col-bar{width:100%;max-width:28px;background:linear-gradient(180deg,var(--primary),var(--primary-d));border-radius:6px 6px 0 0;min-height:3px;transition:height .3s}
 .trend .col .col-num{font-size:11px;font-weight:700;color:var(--text)}
 .trend .col .col-lab{font-size:10px;color:var(--muted);white-space:nowrap}
-
-/* ---------- 提醒列表 ---------- */
-.remind-list{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
-.remind-item{display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:#fff}
-.remind-item .dot{width:10px;height:10px;border-radius:50%;flex:none}
-.remind-item.over .dot{background:var(--red)}
-.remind-item.soon .dot{background:var(--amber)}
-.remind-item .ri-main{flex:1;min-width:0}
-.remind-item .ri-title{font-weight:600;font-size:14px}
-.remind-item .ri-sub{font-size:12px;color:var(--muted);margin-top:2px}
-.remind-item.over .ri-sub{color:var(--red)}
-.remind-item.soon .ri-sub{color:var(--amber)}
 
 /* ---------- 底部 Tab 栏 ---------- */
 .tabbar{

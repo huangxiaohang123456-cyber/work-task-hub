@@ -81,8 +81,6 @@
 
         <ul id="task-list" class="task-list"></ul>
         <p id="empty-hint" class="empty-hint hidden">还没有任务，点右下角 ＋ 添加</p>
-
-        <div id="reminder-banner" class="reminder-banner hidden"></div>
       </section>
 
       <!-- ============ 统计页 ============ -->
@@ -107,16 +105,6 @@
         </div>
       </section>
 
-      <!-- ============ 提醒页 ============ -->
-      <section id="page-remind" class="page">
-        <div class="panel">
-          <h3 class="panel-title">📌 待办提醒</h3>
-          <p class="hint">逾期任务标红，临近任务（提前 <span id="rem-lead">24</span> 小时）标橙。点下方按钮可一键推送到微信。</p>
-          <div id="remind-list" class="remind-list"></div>
-          <button class="btn-primary block" id="btn-push">🔔 推送到微信</button>
-        </div>
-      </section>
-
       <!-- ============ 我的页 ============ -->
       <section id="page-me" class="page">
         <div class="panel">
@@ -129,12 +117,6 @@
           <label>我的名字（用于标注“添加人”）
             <input type="text" id="me-name" placeholder="如：阚斌" />
           </label>
-          <label>微信推送令牌 (PushPlus)
-            <input type="text" id="me-token" placeholder="在 pushplus.plus 获取的 token（留空则不推送）" />
-          </label>
-          <label>提前提醒小时数
-            <input type="number" id="me-lead" min="1" max="720" value="24" />
-          </label>
           <button class="btn-primary block" id="btn-save-me">保存</button>
           <p class="hint">数据仅你本人可见（登录隔离）。本页名字仅用于标注添加人，不做登录。</p>
         </div>
@@ -146,7 +128,6 @@
     <nav class="tabbar">
       <button class="tab active" data-page="tasks"><span class="ico">📋</span><span>任务</span></button>
       <button class="tab" data-page="stats"><span class="ico">📊</span><span>统计</span></button>
-      <button class="tab" data-page="remind"><span class="ico">🔔</span><span>提醒</span></button>
       <button class="tab" data-page="me"><span class="ico">👤</span><span>我的</span></button>
     </nav>
 
@@ -197,6 +178,9 @@
               </select>
             </label>
           </div>
+          <label>提醒时间（精确到小时:分钟，到点通过邮箱提醒）
+            <input type="datetime-local" id="f-remind" />
+          </label>
           <label>标签（用逗号分隔）
             <input type="text" id="f-tags" placeholder="如：汇报, 项目A" />
           </label>

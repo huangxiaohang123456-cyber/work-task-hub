@@ -627,6 +627,7 @@
     const msg = $('#auth-msg');
     msg.textContent = '';
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = '请输入有效的邮箱'; return; }
+    if (!/@qq\.com$/i.test(email)) { msg.textContent = '请使用 QQ 邮箱注册 / 登录'; return; }
     if (password.length < 6) { msg.textContent = '密码至少 6 位'; return; }
     $('#auth-submit').disabled = true;
     try {

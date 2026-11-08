@@ -302,41 +302,52 @@
     const list = state.tasks.filter((t) => matchView(t) && matchOther(t));
     taskList.innerHTML = '';
     emptyHint.classList.toggle('hidden', list.length > 0);
-
-    list.forEach((t) => {
-      const li = document.createElement('li');
-      li.className = 'task-card';
-      const dueCls = (() => {
-        if (!t.due_date) return '';
-        const d = new Date(t.due_date), now = new Date();
-        if (t.status !== 'done' && isBefore(d, now)) return 'over';
-        if (t.status !== 'done' && (d - now) <= 24 * 3600 * 1000) return 'soon';
-        return '';
-      })();
-      li.innerHTML = `
-        <div class="task-main">
-          <div class="task-title"><span class="badge ${t.priority}">${priText(t.priority)}</span><span>${esc(t.title)}</span></div>
-          ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
-          <div class="task-meta">
-            ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
-            ${t.remind_at ? `<span class="rem">🔔 ${fmt(t.remind_at)}</span>` : ''}
-            ${t.reminded_at ? `<span class="rem-sent">📧 已提醒</span>` : ''}
-          </div>
-        </div>
-        <div class="task-actions">
-          <select class="status-select" data-id="${t.id}">
-            <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>待办</option>
-            <option value="doing" ${t.status === 'doing' ? 'selected' : ''}>进行中</option>
-            <option value="done" ${t.status === 'done' ? 'selected' : ''}>已完成</option>
-          </select>
-          <button class="icon-btn" data-edit="${t.id}">编辑</button>
-          <button class="icon-btn danger" data-del="${t.id}">删除</button>
-        </div>`;
-      taskList.appendChild(li);
-    });
-
+    const active = list.filter((t) => t.status !== 'done');
+    const done = list.filter((t) => t.status === 'done');
+    active.forEach((t) => taskList.appendChild(makeCard(t, false)));
+    if (done.length) {
+      const grp = document.createElement('li');
+      grp.className = 'done-group';
+      grp.innerHTML = `<button class="done-toggle" type="button"><span class="done-toggle-title">已完成任务 (${done.length})</span><span class="chev">▾</span></button><ul class="done-body"></ul>`;
+      const body = grp.querySelector('.done-body');
+      done.forEach((t) => body.appendChild(makeCard(t, true)));
+      taskList.appendChild(grp);
+      grp.querySelector('.done-toggle').addEventListener('click', () => grp.classList.toggle('collapsed'));
+    }
     bindTaskItemEvents();
     updateTaskStats();
+  }
+
+  function makeCard(t, isDone) {
+    const li = document.createElement('li');
+    li.className = 'task-card';
+    const dueCls = (() => {
+      if (!t.due_date) return '';
+      const d = new Date(t.due_date), now = new Date();
+      if (t.status !== 'done' && isBefore(d, now)) return 'over';
+      if (t.status !== 'done' && (d - now) <= 24 * 3600 * 1000) return 'soon';
+      return '';
+    })();
+    li.innerHTML = `
+      <div class="task-main">
+        <div class="task-title"><span class="badge ${t.priority}">${priText(t.priority)}</span><span>${esc(t.title)}</span></div>
+        ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
+        <div class="task-meta">
+          ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
+          ${t.remind_at ? `<span class="rem">🔔 ${fmt(t.remind_at)}</span>` : ''}
+          ${t.reminded_at ? `<span class="rem-sent">📧 已提醒</span>` : ''}
+        </div>
+      </div>
+      <div class="task-actions">
+        <select class="status-select" data-id="${t.id}" ${isDone ? 'disabled' : ''}>
+          <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>待办</option>
+          <option value="doing" ${t.status === 'doing' ? 'selected' : ''}>进行中</option>
+          <option value="done" ${t.status === 'done' ? 'selected' : ''}>已完成</option>
+        </select>
+        <button class="icon-btn" data-edit="${t.id}">编辑</button>
+        <button class="icon-btn danger" data-del="${t.id}">删除</button>
+      </div>`;
+    return li;
   }
 
   function updateTaskStats() {
@@ -401,6 +412,7 @@
       const msg = $('#task-form-msg');
       if (!title) { msg.textContent = '请填写标题'; return; }
       const status = $('#f-status').value;
+      const oldT = id ? state.tasks.find((x) => x.id === id) : null;
       const row = {
         title,
         description: $('#f-desc').value.trim(),
@@ -410,7 +422,9 @@
       };
       if (remIso) row.remind_at = remIso; // 仅当设置了提醒时间才发送该字段（列未建前不影响普通任务）
       if (remChanged) row.reminded_at = null; // 提醒时间被改动或清空时，重置发送标记以便重新触发（未改动则不碰，保留已发送状态）
-      if (status === 'done') row.completed_at = new Date().toISOString();
+      const wasDone = oldT && oldT.status === 'done';
+      if (status === 'done' && !wasDone) row.completed_at = new Date().toISOString();
+      else if (status !== 'done') row.completed_at = null;
       try {
         if (id) {
           const t = state.tasks.find((x) => x.id === id);
@@ -440,6 +454,7 @@
       $('#f-desc').value = t.description || '';
       $('#f-priority').value = t.priority;
       $('#f-status').value = t.status;
+      $('#f-status').disabled = (t.status === 'done');
       $('#f-due').value = t.due_date ? toLocalInput(t.due_date) : '';
       $('#f-remind').value = t.remind_at ? toLocalInput(t.remind_at) : '';
     } else {
@@ -448,6 +463,7 @@
       $('#task-id').value = '';
       $('#f-priority').value = 'medium';
       $('#f-status').value = 'todo';
+      $('#f-status').disabled = false;
       $('#f-remind').value = '';
     }
     openModal('#task-modal');

@@ -284,6 +284,7 @@
     if (v === 'today') return d >= startOfDay(now) && d <= endOfDay(now);
     if (v === 'week') return d >= startOfWeek(now) && d < endOfWeek(now);
     if (v === 'month') return d >= startOfMonth(now) && d < endOfMonth(now);
+    if (v === 'future') return d > new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
     return true;
   }
   function matchOther(t) {

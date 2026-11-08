@@ -113,7 +113,7 @@
         </div>
         <div class="panel">
           <h3 class="panel-title">数据导出</h3>
-          <p class="hint">把当前账号下的全部任务导出为 Excel 表格（含标题、截止时间、完成情况、优先级、标签等）。手机端会弹出系统“分享/保存”面板或新窗口，可选“存储到文件 / 用 Excel 打开”。</p>
+          <p class="hint">点击按钮直接下载 Excel 文件（含标题、截止时间、完成情况、优先级、标签等）。手机自带浏览器（Safari / Chrome）可直接保存；微信/QQ 内若无法下载，请点右上角「…」→「在浏览器打开」后再下载。</p>
           <button class="btn-ghost block" id="btn-export">📊 导出 Excel（.xls）</button>
         </div>
       </section>
@@ -186,22 +186,6 @@
             <button type="submit" class="btn-primary">保存</button>
           </div>
         </form>
-      </div>
-    </div>
-
-    <!-- 导出预览弹窗（App 内显示表格，主操作为复制，规避移动端下载受限） -->
-    <div id="export-modal" class="modal hidden">
-      <div class="modal-card">
-        <div class="modal-head">
-          <h2>导出数据</h2>
-          <button class="modal-close" data-close>×</button>
-        </div>
-        <p class="hint" id="export-tip"></p>
-        <div class="export-preview" id="export-preview"></div>
-        <div class="export-actions">
-          <button class="btn-primary block" id="btn-copy-tsv">📋 复制表格（粘贴到 Excel / WPS）</button>
-          <button class="btn-ghost block" id="btn-download-xls">⬇ 下载 .xls 文件</button>
-        </div>
       </div>
     </div>
 

@@ -87,8 +87,10 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .rem-sent{color:var(--green);font-weight:600}
 .task-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
 .status-select{padding:6px 8px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:#fff;flex:1}
-.icon-btn{background:transparent;border:none;font-size:16px;color:var(--muted);padding:4px 6px}
-.icon-btn:hover{color:var(--primary)}
+.icon-btn{font-size:13px;font-weight:600;line-height:1;padding:6px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--text);cursor:pointer;transition:background .15s,border-color .15s}
+.icon-btn:hover{background:#f4f5f7;border-color:#d7d9e0}
+.icon-btn.danger{color:var(--red);border-color:#f3c9c9}
+.icon-btn.danger:hover{background:#fdecec;border-color:#e7a9a9}
 .empty-hint{text-align:center;color:var(--muted);padding:40px 16px}
 
 /* ---------- 面板（统计/我的） ---------- */

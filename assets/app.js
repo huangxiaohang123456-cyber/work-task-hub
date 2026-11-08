@@ -329,8 +329,8 @@
             <option value="doing" ${t.status === 'doing' ? 'selected' : ''}>进行中</option>
             <option value="done" ${t.status === 'done' ? 'selected' : ''}>已完成</option>
           </select>
-          <button class="icon-btn" data-edit="${t.id}" title="编辑">✏️</button>
-          <button class="icon-btn" data-del="${t.id}" title="删除">🗑️</button>
+          <button class="icon-btn" data-edit="${t.id}">编辑</button>
+          <button class="icon-btn danger" data-del="${t.id}">删除</button>
         </div>`;
       taskList.appendChild(li);
     });

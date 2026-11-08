@@ -75,7 +75,7 @@
             <option value="medium">中</option>
             <option value="low">低</option>
           </select>
-          <input type="search" id="filter-search" placeholder="搜索标题 / 标签" />
+          <input type="search" id="filter-search" placeholder="搜索标题" />
         </div>
 
         <ul id="task-list" class="task-list"></ul>
@@ -113,7 +113,7 @@
         </div>
         <div class="panel">
           <h3 class="panel-title">数据导出</h3>
-          <p class="hint">点击按钮直接下载 Excel 文件（含标题、截止时间、完成情况、优先级、标签等）。手机自带浏览器（Safari / Chrome）可直接保存；微信/QQ 内若无法下载，请点右上角「…」→「在浏览器打开」后再下载。</p>
+          <p class="hint">点击按钮直接下载 Excel 文件（含标题、截止时间、完成情况、优先级等）。手机自带浏览器（Safari / Chrome）可直接保存；微信/QQ 内若无法下载，请点右上角「…」→「在浏览器打开」后再下载。</p>
           <button class="btn-ghost block" id="btn-export">📊 导出 Excel（.xls）</button>
         </div>
       </section>
@@ -165,21 +165,10 @@
             <label>截止日期
               <input type="datetime-local" id="f-due" />
             </label>
-            <label>周期
-              <select id="f-recurrence">
-                <option value="none" selected>一次性</option>
-                <option value="daily">每天</option>
-                <option value="weekly">每周</option>
-                <option value="monthly">每月</option>
-              </select>
+            <label>提醒时间（精确到小时:分钟，到点通过邮箱提醒）
+              <input type="datetime-local" id="f-remind" />
             </label>
           </div>
-          <label>提醒时间（精确到小时:分钟，到点通过邮箱提醒）
-            <input type="datetime-local" id="f-remind" />
-          </label>
-          <label>标签（用逗号分隔）
-            <input type="text" id="f-tags" placeholder="如：汇报, 项目A" />
-          </label>
           <p id="task-form-msg" class="form-msg"></p>
           <div class="modal-foot">
             <button type="button" class="btn-ghost" data-close>取消</button>

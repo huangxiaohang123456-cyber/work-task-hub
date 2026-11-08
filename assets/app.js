@@ -201,8 +201,6 @@
 
   // ---------- 文本辅助 ----------
   function priText(p) { return { high: '高', medium: '中', low: '低' }[p] || p; }
-  function recLabel(r) { return { none: '', daily: '🔁 每天', weekly: '🔁 每周', monthly: '🔁 每月' }[r] || ''; }
-  function recText(r) { return { none: '一次性', daily: '每天', weekly: '每周', monthly: '每月' }[r] || ''; }
   function statusText(s) { return { todo: '待办', doing: '进行中', done: '已完成' }[s] || s; }
   function esc(s) {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -323,8 +321,6 @@
             ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
             ${t.remind_at ? `<span class="rem">🔔 ${fmt(t.remind_at)}</span>` : ''}
             ${t.reminded_at ? `<span class="rem-sent">📧 已提醒</span>` : ''}
-            ${recLabel(t.recurrence)}
-            ${(t.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}
           </div>
         </div>
         <div class="task-actions">
@@ -401,7 +397,6 @@
       const remIso = remVal ? new Date(remVal).toISOString() : null;
       const oldRem = id ? ((state.tasks.find((x) => x.id === id) || {}).remind_at || null) : null;
       const remChanged = remIso !== oldRem; // 都是 ISO 字符串或 null，可直比
-      const tags = $('#f-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
       const title = $('#f-title').value.trim();
       const msg = $('#task-form-msg');
       if (!title) { msg.textContent = '请填写标题'; return; }
@@ -411,9 +406,7 @@
         description: $('#f-desc').value.trim(),
         priority: $('#f-priority').value,
         status,
-        due_date: dueIso,
-        recurrence: $('#f-recurrence').value,
-        tags
+        due_date: dueIso
       };
       if (remIso) row.remind_at = remIso; // 仅当设置了提醒时间才发送该字段（列未建前不影响普通任务）
       if (remChanged) row.reminded_at = null; // 提醒时间被改动或清空时，重置发送标记以便重新触发（未改动则不碰，保留已发送状态）
@@ -448,16 +441,13 @@
       $('#f-priority').value = t.priority;
       $('#f-status').value = t.status;
       $('#f-due').value = t.due_date ? toLocalInput(t.due_date) : '';
-      $('#f-recurrence').value = t.recurrence;
       $('#f-remind').value = t.remind_at ? toLocalInput(t.remind_at) : '';
-      $('#f-tags').value = (t.tags || []).join(', ');
     } else {
       $('#task-modal-title').textContent = '添加任务';
       $('#task-form').reset();
       $('#task-id').value = '';
       $('#f-priority').value = 'medium';
       $('#f-status').value = 'todo';
-      $('#f-recurrence').value = 'none';
       $('#f-remind').value = '';
     }
     openModal('#task-modal');
@@ -550,14 +540,14 @@
   // 导出：点击「导出 Excel」直接下载 .xls 文件（SpreadsheetML 格式，
   // 列宽可靠生效）。手机自带浏览器（Safari/Chrome）可直接保存。
   // ============================================================
-  const EXPORT_HEAD = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '创建时间', '完成时间'];
+  const EXPORT_HEAD = ['标题', '描述', '优先级', '截止时间', '提醒时间', '完成情况', '创建时间', '完成时间'];
   // 各列宽度（点数，SpreadsheetML 用）。日期类列给足宽度，避免 Excel 显示成 ########
-  const EXPORT_COL_W = [180, 260, 70, 130, 130, 130, 90, 90, 130, 130];
+  const EXPORT_COL_W = [180, 260, 70, 130, 130, 90, 130, 130];
 
   function buildExportRows() {
     return state.tasks.map((t) => ([
-      t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
-      fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status),
+      t.title, t.description || '', priText(t.priority),
+      fmt(t.due_date), fmt(t.remind_at), statusText(t.status),
       fmt(t.created_at), fmt(t.completed_at)
     ]));
   }

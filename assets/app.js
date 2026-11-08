@@ -13,6 +13,20 @@
   const LS_PROFILE = 'wtb_profile_v1';
   const LS_SESSION = 'wtb_session_v1';
 
+  // ---------- 致命错误兜底：任何 JS 报错都显示在屏幕上，避免默默白屏 ----------
+  function showFatal(msg) {
+    let el = document.getElementById('fatal-error');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fatal-error';
+      el.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:9999;background:#b00020;color:#fff;padding:12px 14px;font-size:13px;line-height:1.5;white-space:pre-wrap;';
+      document.body.appendChild(el);
+    }
+    el.textContent = '⚠️ 页面出错了（请截图发给开发者）：\n' + msg;
+  }
+  window.addEventListener('error', (e) => showFatal((e.error && e.error.stack) || e.message || String(e)));
+  window.addEventListener('unhandledrejection', (e) => showFatal('Promise 未处理：' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason)));
+
   const state = {
     profile: { name: '' },
     session: null,
@@ -200,22 +214,26 @@
   document.addEventListener('DOMContentLoaded', init);
 
   async function init() {
-    loadProfile();
-    bindTabs();
-    bindToolbar();
-    bindModals();
-    bindTaskForm();
-    bindSettingsForm();
-    bindAuth();
-    registerSW();
+    try {
+      loadProfile();
+      bindTabs();
+      bindToolbar();
+      bindModals();
+      bindTaskForm();
+      bindSettingsForm();
+      bindAuth();
+      registerSW();
 
-    $('#me-name').value = state.profile.name || '';
-    $('#me-display').textContent = state.profile.name || '我';
+      $('#me-name').value = state.profile.name || '';
+      $('#me-display').textContent = state.profile.name || '我';
 
-    const rb = $('#btn-retry');
-    if (rb) rb.addEventListener('click', () => { hideOfflineBanner(); loadTasks(); });
-    $('#fab').addEventListener('click', () => openTaskModal(null));
-    await boot();
+      const rb = $('#btn-retry');
+      if (rb) rb.addEventListener('click', () => { hideOfflineBanner(); loadTasks(); });
+      $('#fab').addEventListener('click', () => openTaskModal(null));
+      await boot();
+    } catch (e) {
+      showFatal((e && (e.stack || e.message)) || String(e));
+    }
   }
 
   // ============================================================

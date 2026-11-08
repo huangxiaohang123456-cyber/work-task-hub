@@ -1,0 +1,10 @@
+{
+  "name": "wtb-reminder",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "工作任务台 · 邮件提醒脚本（无构建依赖，仅 Node 内置 fetch + nodemailer）",
+  "dependencies": {
+    "nodemailer": "^6.9.0"
+  }
+}

@@ -84,6 +84,7 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .due.soon{color:var(--amber);font-weight:600}
 .due.over{color:var(--red);font-weight:700}
 .rem{color:var(--primary);font-weight:600}
+.rem-sent{color:var(--green);font-weight:600}
 .task-actions{display:flex;align-items:center;gap:8px;margin-top:10px}
 .status-select{padding:6px 8px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:#fff;flex:1}
 .icon-btn{background:transparent;border:none;font-size:16px;color:var(--muted);padding:4px 6px}

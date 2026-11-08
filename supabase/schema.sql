@@ -31,6 +31,7 @@ create table if not exists public.tasks (
                   check (status in ('todo','doing','done')),            -- 状态
   due_date      timestamptz,                                           -- 截止日期
   remind_at     timestamptz,                                           -- 提醒时间（精确到分钟，到点发邮件提醒）
+  reminded_at   timestamptz,                                           -- 提醒邮件已发送时间（去重，避免重复发）
   creator_name  text         not null default '',                       -- 添加人（本地设置填写）
   created_at    timestamptz  not null default now(),
   completed_at  timestamptz,                                           -- 完成时间（用于趋势统计）
@@ -40,6 +41,7 @@ create table if not exists public.tasks (
 create index if not exists tasks_user_idx    on public.tasks (user_id);
 create index if not exists tasks_due_idx     on public.tasks (due_date);
 create index if not exists tasks_remind_idx  on public.tasks (remind_at);
+create index if not exists tasks_reminded_idx on public.tasks (reminded_at);
 create index if not exists tasks_status_idx  on public.tasks (status);
 
 -- ============================================================

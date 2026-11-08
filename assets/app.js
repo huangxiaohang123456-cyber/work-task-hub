@@ -305,6 +305,7 @@
           <div class="task-meta">
             ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
             ${t.remind_at ? `<span class="rem">🔔 ${fmt(t.remind_at)}</span>` : ''}
+            ${t.reminded_at ? `<span class="rem-sent">📧 已提醒</span>` : ''}
             ${recLabel(t.recurrence)}
             ${(t.tags || []).map((x) => `<span class="tag">${esc(x)}</span>`).join('')}
             ${t.creator_name ? `<span>👤 ${esc(t.creator_name)}</span>` : ''}
@@ -382,6 +383,8 @@
       const dueIso = dueVal ? new Date(dueVal).toISOString() : null;
       const remVal = $('#f-remind').value;
       const remIso = remVal ? new Date(remVal).toISOString() : null;
+      const oldRem = id ? ((state.tasks.find((x) => x.id === id) || {}).remind_at || null) : null;
+      const remChanged = remIso !== oldRem; // 都是 ISO 字符串或 null，可直比
       const tags = $('#f-tags').value.split(',').map((s) => s.trim()).filter(Boolean);
       const title = $('#f-title').value.trim();
       const msg = $('#task-form-msg');
@@ -397,6 +400,7 @@
         tags
       };
       if (remIso) row.remind_at = remIso; // 仅当设置了提醒时间才发送该字段（列未建前不影响普通任务）
+      if (remChanged) row.reminded_at = null; // 提醒时间被改动或清空时，重置发送标记以便重新触发（未改动则不碰，保留已发送状态）
       if (status === 'done') row.completed_at = new Date().toISOString();
       try {
         if (id) {

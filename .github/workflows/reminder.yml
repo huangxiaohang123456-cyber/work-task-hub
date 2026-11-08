@@ -1,0 +1,37 @@
+name: 任务邮件提醒
+
+on:
+  schedule:
+    # 每 5 分钟跑一次（注意：GitHub Actions 的 cron 使用 UTC，且可能有几分钟延迟）
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}   # 可在 Actions 页面手动点 "Run workflow" 立即测试
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 配置 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装依赖
+        working-directory: scripts/reminder
+        run: npm install
+
+      - name: 运行提醒脚本
+        working-directory: scripts/reminder
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          PAGES_URL: ${{ secrets.PAGES_URL }}
+        run: node send-reminders.mjs

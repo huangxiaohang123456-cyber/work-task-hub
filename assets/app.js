@@ -547,7 +547,9 @@
   }
 
   // ============================================================
-  // 导出 Excel（生成 .xls，Excel 可直接打开；兼容手机下载）
+  // 导出 Excel（生成 .xls，Excel 可直接打开）
+  // 适配：移动端优先系统“分享/保存”；桌面走锚点下载；
+  // 微信等受限 WebView 改为新窗口打开表格，避免下载卡死在遮罩。
   // ============================================================
   function exportExcel() {
     if (!state.tasks.length) { alert('当前没有任务可导出'); return; }
@@ -564,23 +566,37 @@
       html += '<tr>' + row.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>';
     });
     html += '</table></body></html>';
-    const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    downloadBlob(blob, '工作任务台_' + fmt(new Date(), false) + '.xls');
-  }
 
-  // 兼容下载：优先 createObjectURL；缺失时用 FileReader data URI 兜底（手机 WebView 常见）
-  function downloadBlob(blob, filename) {
-    if (navigator.msSaveOrOpenBlob) { navigator.msSaveOrOpenBlob(blob, filename); return; }
-    if (window.URL && URL.createObjectURL) {
+    const filename = '工作任务台_' + fmt(new Date(), false) + '.xls';
+    const mime = 'application/vnd.ms-excel;charset=utf-8';
+    const blob = new Blob(['﻿' + html], { type: mime });
+    const isWeChat = /micromessenger/i.test(navigator.userAgent || '');
+
+    // 1) 非微信且支持系统分享文件 → 原生保存/打开（移动端最稳，立即弹系统面板）
+    if (!isWeChat && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: mime })] })) {
+      try {
+        navigator.share({ files: [new File([blob], filename, { type: mime })], title: '工作任务台导出' }).catch(() => {});
+        return;
+      } catch (e) { /* 继续兜底 */ }
+    }
+
+    // 2) 桌面 / 普通浏览器 → 锚点下载
+    if (!isWeChat && window.URL && URL.createObjectURL) {
       const url = URL.createObjectURL(blob);
       triggerDownload(url, filename);
-      setTimeout(() => URL.revokeObjectURL(url), 1500);
-    } else {
-      const reader = new FileReader();
-      reader.onload = () => triggerDownload(reader.result, filename);
-      reader.readAsDataURL(blob);
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      return;
     }
+
+    // 3) 受限环境（微信等）：新窗口打开表格，避免下载卡在遮罩
+    const reader = new FileReader();
+    reader.onload = () => {
+      const w = window.open(reader.result, '_blank');
+      if (!w) alert('未能打开新窗口，请允许弹出窗口，或在手机默认浏览器中打开本页面后再导出。');
+    };
+    reader.readAsDataURL(blob);
   }
+
   function triggerDownload(href, filename) {
     const a = document.createElement('a');
     a.href = href; a.download = filename;

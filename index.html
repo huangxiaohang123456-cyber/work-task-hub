@@ -76,7 +76,6 @@
             <option value="low">低</option>
           </select>
           <input type="search" id="filter-search" placeholder="搜索标题 / 标签" />
-          <button class="btn-ghost sm" id="btn-export">⬇ 导出</button>
         </div>
 
         <ul id="task-list" class="task-list"></ul>
@@ -119,6 +118,11 @@
           </label>
           <button class="btn-primary block" id="btn-save-me">保存</button>
           <p class="hint">数据仅你本人可见（登录隔离）。本页名字仅用于标注添加人，不做登录。</p>
+        </div>
+        <div class="panel">
+          <h3 class="panel-title">数据导出</h3>
+          <p class="hint">把当前账号下的全部任务导出为 Excel 表格（含标题、截止时间、完成情况、优先级、标签等）。</p>
+          <button class="btn-ghost block" id="btn-export">📊 导出 Excel（.xls）</button>
         </div>
       </section>
 

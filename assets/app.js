@@ -496,7 +496,6 @@
     });
     $('#filter-priority').addEventListener('change', (e) => { state.filters.priority = e.target.value; renderTasks(); });
     $('#filter-search').addEventListener('input', (e) => { state.filters.search = e.target.value.trim(); renderTasks(); });
-    $('#btn-export').addEventListener('click', exportCSV);
   }
 
   // ============================================================
@@ -551,27 +550,44 @@
   }
 
   // ============================================================
-  // 导出 CSV（Excel 可直接打开，无需 XLSX 库）
+  // 导出 Excel（生成 .xls，Excel 可直接打开；兼容手机下载）
   // ============================================================
-  function exportCSV() {
-    const head = ['标题', '描述', '优先级', '标签', '截止日期', '提醒时间', '周期', '状态', '添加人', '创建时间', '完成时间'];
-    const rows = [head];
-    state.tasks.forEach((t) => rows.push([
-      t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
-      fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status), t.creator_name || '',
-      fmt(t.created_at), fmt(t.completed_at)
-    ]));
-    const csv = '﻿' + rows.map((r) => r.map(csvCell).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const a = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    a.href = url; a.download = '工作任务台_' + fmt(new Date(), false) + '.csv';
-    a.click(); URL.revokeObjectURL(url);
+  function exportExcel() {
+    if (!state.tasks.length) { alert('当前没有任务可导出'); return; }
+    const head = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '添加人', '创建时间', '完成时间'];
+    let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
+      + '<head><meta charset="utf-8"><style>td,th{border:1px solid #ccc;padding:4px 8px;}th{background:#f2802f;color:#fff;}</style></head><body><table>';
+    html += '<tr>' + head.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
+    state.tasks.forEach((t) => {
+      const row = [
+        t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
+        fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status),
+        t.creator_name || '', fmt(t.created_at), fmt(t.completed_at)
+      ];
+      html += '<tr>' + row.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>';
+    });
+    html += '</table></body></html>';
+    const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    downloadBlob(blob, '工作任务台_' + fmt(new Date(), false) + '.xls');
   }
-  function csvCell(v) {
-    v = String(v == null ? '' : v);
-    if (/[",\r\n]/.test(v)) v = '"' + v.replace(/"/g, '""') + '"';
-    return v;
+
+  // 兼容下载：优先 createObjectURL；缺失时用 FileReader data URI 兜底（手机 WebView 常见）
+  function downloadBlob(blob, filename) {
+    if (navigator.msSaveOrOpenBlob) { navigator.msSaveOrOpenBlob(blob, filename); return; }
+    if (window.URL && URL.createObjectURL) {
+      const url = URL.createObjectURL(blob);
+      triggerDownload(url, filename);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => triggerDownload(reader.result, filename);
+      reader.readAsDataURL(blob);
+    }
+  }
+  function triggerDownload(href, filename) {
+    const a = document.createElement('a');
+    a.href = href; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
   }
 
   // ============================================================
@@ -584,6 +600,7 @@
       applyUserLabels();
       alert('✅ 已保存');
     });
+    $('#btn-export').addEventListener('click', exportExcel);
   }
 
   // ============================================================

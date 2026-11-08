@@ -8,7 +8,7 @@
   'use strict';
 
   const cfg = window.APP_CONFIG || {};
-  const URL = cfg.SUPABASE_URL;
+  const SB_URL = cfg.SUPABASE_URL;
   const KEY = cfg.SUPABASE_ANON_KEY;
   const LS_PROFILE = 'wtb_profile_v1';
   const LS_SESSION = 'wtb_session_v1';
@@ -67,7 +67,7 @@
       headers['Prefer'] = 'return=representation';
       opt.body = JSON.stringify(body);
     }
-    const res = await netFetch(URL + '/rest/v1/' + path, opt);
+    const res = await netFetch(SB_URL + '/rest/v1/' + path, opt);
     if (res.status === 401) { clearSession(); showAuth(); throw new Error('AUTH_EXPIRED'); }
     if (!res.ok) {
       let txt = '';
@@ -83,7 +83,7 @@
     const headers = { 'apikey': KEY, 'Accept': 'application/json' };
     const opt = { method, headers };
     if (body !== undefined) { headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
-    const res = await netFetch(URL + path, opt);
+    const res = await netFetch(SB_URL + path, opt);
     let data = null;
     try { data = await res.json(); } catch (e) { /* ignore */ }
     if (!res.ok) {
@@ -123,7 +123,7 @@
 
   async function doSignOut() {
     try {
-      await fetch(URL + '/auth/v1/logout', {
+      await fetch(SB_URL + '/auth/v1/logout', {
         method: 'POST',
         headers: { 'apikey': KEY, 'Authorization': 'Bearer ' + (state.session ? state.session.access_token : '') }
       });
@@ -632,14 +632,31 @@
   function downloadExport() {
     const rows = buildExportRows();
     let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
-      + '<head><meta charset="utf-8"><style>td,th{border:1px solid #ccc;padding:4px 8px;}th{background:#f2802f;color:#fff;}</style></head><body><table>';
+      + '<head><meta charset="utf-8"><style>td,th{border:1px solid #ccc;padding:4px 8px;}th{background:#f2802f;color:#fff;}</style></head><body><table>'
+      // 给定列宽，减少 Excel 打开后日期列显示成 ######## 的情况
+      + '<colgroup><col/><col width="120"/><col width="60"/><col width="90"/><col width="140"/><col width="140"/><col width="70"/><col width="80"/><col width="140"/><col width="140"/></colgroup>';
     html += '<tr>' + EXPORT_HEAD.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
     rows.forEach((r) => { html += '<tr>' + r.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>'; });
     html += '</table></body></html>';
-    const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    triggerDownload(url, '工作任务台_' + fmt(new Date(), false) + '.xls');
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    const filename = '工作任务台_' + fmt(new Date(), false) + '.xls';
+
+    // 1) 优先 Blob + createObjectURL（桌面/系统浏览器最稳）
+    if (window.URL && typeof URL.createObjectURL === 'function') {
+      try {
+        const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, filename);
+        setTimeout(() => URL.revokeObjectURL(url), 3000);
+        return;
+      } catch (e) { /* 退回 data URI */ }
+    }
+    // 2) 兜底：data URI（不依赖 createObjectURL，受限 WebView 也可能触发下载）
+    try {
+      const dataUri = 'data:application/vnd.ms-excel;charset=utf-8,' + encodeURIComponent('﻿' + html);
+      triggerDownload(dataUri, filename);
+      return;
+    } catch (e) {}
+    alert('当前环境不支持直接下载，请改用「复制表格」后粘贴到 Excel/WPS。');
   }
 
   function triggerDownload(href, filename) {

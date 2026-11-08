@@ -553,6 +553,8 @@
   // 浏览器下载卡死（灰色遮罩）或无反应的问题。
   // ============================================================
   const EXPORT_HEAD = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '创建时间', '完成时间'];
+  // 各列宽度（点数，SpreadsheetML 用；HTML 用同值近似）。日期类列给足宽度，避免显示为 ####
+  const EXPORT_COL_W = [180, 260, 70, 130, 130, 130, 90, 90, 130, 130];
 
   function buildExportRows() {
     return state.tasks.map((t) => ([
@@ -594,10 +596,13 @@
     // 纯文本 TSV（兜底）
     let tsv = '﻿' + EXPORT_HEAD.join('\t') + '\n';
     rows.forEach((r) => { tsv += r.map((c) => (c == null ? '' : String(c))).join('\t') + '\n'; });
-    // HTML 表格（Excel/WPS 粘贴为真实多列表格，带表头底色）
-    let html = '<html><head><meta charset="utf-8"></head><body><table border="1" cellspacing="0" cellpadding="4">';
-    html += '<tr>' + EXPORT_HEAD.map((h) => '<th style="background:#f2802f;color:#fff;font-weight:700">' + esc(h) + '</th>').join('') + '</tr>';
-    rows.forEach((r) => { html += '<tr>' + r.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>'; });
+    // HTML 表格（Excel/WPS 粘贴为真实多列表格，带表头底色 + 列宽）
+    let html = '<html><head><meta charset="utf-8"></head><body>'
+      + '<table border="1" cellspacing="0" cellpadding="4"><colgroup>'
+      + EXPORT_COL_W.map((w) => '<col width="' + w + '"/>').join('')
+      + '</colgroup>';
+    html += '<tr>' + EXPORT_HEAD.map((h, i) => '<th style="background:#f2802f;color:#fff;font-weight:700;width:' + EXPORT_COL_W[i] + 'px">' + esc(h) + '</th>').join('') + '</tr>';
+    rows.forEach((r) => { html += '<tr>' + r.map((c, i) => '<td style="width:' + EXPORT_COL_W[i] + 'px">' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>'; });
     html += '</table></body></html>';
 
     // 1) 优先写 HTML+文本到剪贴板：Excel 粘贴即为多列表格
@@ -631,19 +636,24 @@
 
   function downloadExport() {
     const rows = buildExportRows();
-    let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
-      + '<head><meta charset="utf-8"><style>td,th{border:1px solid #ccc;padding:4px 8px;}th{background:#f2802f;color:#fff;}</style></head><body><table>'
-      // 给定列宽，减少 Excel 打开后日期列显示成 ######## 的情况
-      + '<colgroup><col/><col width="120"/><col width="60"/><col width="90"/><col width="140"/><col width="140"/><col width="70"/><col width="80"/><col width="140"/><col width="140"/></colgroup>';
-    html += '<tr>' + EXPORT_HEAD.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
-    rows.forEach((r) => { html += '<tr>' + r.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>'; });
-    html += '</table></body></html>';
+    // 用 SpreadsheetML（Excel 2003 XML）生成 .xls：列宽通过 <Column ss:Width> 可靠生效，
+    // 避免 HTML 表格在 Excel 里列宽不可靠导致日期列显示成 ########。
+    let xml = '<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n'
+      + '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
+      + 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'
+      + '<Worksheet ss:Name="工作任务台">\n<Table>\n';
+    EXPORT_COL_W.forEach((w) => { xml += '<Column ss:Width="' + w + '"/>\n'; });
+    xml += '<Row>' + EXPORT_HEAD.map((h) => '<Cell><Data ss:Type="String">' + esc(h) + '</Data></Cell>').join('') + '</Row>\n';
+    rows.forEach((r) => {
+      xml += '<Row>' + r.map((c) => '<Cell><Data ss:Type="String">' + esc(c == null ? '' : c) + '</Data></Cell>').join('') + '</Row>\n';
+    });
+    xml += '</Table>\n</Worksheet>\n</Workbook>';
     const filename = '工作任务台_' + fmt(new Date(), false) + '.xls';
 
     // 1) 优先 Blob + createObjectURL（桌面/系统浏览器最稳）
     if (window.URL && typeof URL.createObjectURL === 'function') {
       try {
-        const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         triggerDownload(url, filename);
         setTimeout(() => URL.revokeObjectURL(url), 3000);
@@ -652,7 +662,7 @@
     }
     // 2) 兜底：data URI（不依赖 createObjectURL，受限 WebView 也可能触发下载）
     try {
-      const dataUri = 'data:application/vnd.ms-excel;charset=utf-8,' + encodeURIComponent('﻿' + html);
+      const dataUri = 'data:application/vnd.ms-excel;charset=utf-8,' + encodeURIComponent('﻿' + xml);
       triggerDownload(dataUri, filename);
       return;
     } catch (e) {}

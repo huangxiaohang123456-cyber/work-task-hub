@@ -411,6 +411,7 @@
       const title = $('#f-title').value.trim();
       const msg = $('#task-form-msg');
       if (!title) { msg.textContent = '请填写标题'; return; }
+      if (!dueIso) { msg.textContent = '请填写截止日期'; return; }
       const status = $('#f-status').value;
       const oldT = id ? state.tasks.find((x) => x.id === id) : null;
       const row = {

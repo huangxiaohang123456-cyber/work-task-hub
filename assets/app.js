@@ -547,54 +547,85 @@
   }
 
   // ============================================================
-  // 导出 Excel（生成 .xls，Excel 可直接打开）
-  // 适配：移动端优先系统“分享/保存”；桌面走锚点下载；
-  // 微信等受限 WebView 改为新窗口打开表格，避免下载卡死在遮罩。
+  // 导出：在 App 内弹表格预览，主操作为「复制」（粘贴即 Excel 表格），
+  // 「下载 .xls」仅在系统浏览器显示。完全不依赖 window.open /
+  // navigator.share / createObjectURL 自动触发，规避微信、QQ 内置
+  // 浏览器下载卡死（灰色遮罩）或无反应的问题。
   // ============================================================
+  const EXPORT_HEAD = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '创建时间', '完成时间'];
+
+  function buildExportRows() {
+    return state.tasks.map((t) => ([
+      t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
+      fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status),
+      fmt(t.created_at), fmt(t.completed_at)
+    ]));
+  }
+
   function exportExcel() {
     if (!state.tasks.length) { alert('当前没有任务可导出'); return; }
-    const head = ['标题', '描述', '优先级', '标签', '截止时间', '提醒时间', '周期', '完成情况', '创建时间', '完成时间'];
+    const rows = buildExportRows();
+    let table = '<table><tr>' + EXPORT_HEAD.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
+    rows.forEach((r) => {
+      table += '<tr>' + r.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>';
+    });
+    table += '</table>';
+    $('#export-preview').innerHTML = table;
+
+    // 微信 / QQ 等 WebView 无法可靠下载，隐藏下载按钮、主推复制
+    const ua = navigator.userAgent || '';
+    const isWeChat = /micromessenger/i.test(ua);
+    const isQQ = /mqqbrowser|qq\/|qzone/i.test(ua);
+    const dl = $('#btn-download-xls');
+    if (isWeChat || isQQ) {
+      dl.classList.add('hidden');
+      $('#export-tip').textContent = isWeChat
+        ? '微信内无法直接下载文件。请点「复制表格」，再到电脑 Excel/WPS 里粘贴；或点右上角「…」→「在浏览器打开」后用下载。'
+        : '当前浏览器下载可能受限。请点「复制表格」粘贴到 Excel/WPS；或在手机默认浏览器打开本页后再下载。';
+    } else {
+      dl.classList.remove('hidden');
+      $('#export-tip').textContent = '可点「复制表格」直接粘贴到 Excel/WPS，或点「下载 .xls」保存文件。';
+    }
+    openModal('#export-modal');
+  }
+
+  async function copyExport() {
+    const rows = buildExportRows();
+    let tsv = '﻿' + EXPORT_HEAD.join('\t') + '\n';
+    rows.forEach((r) => { tsv += r.map((c) => (c == null ? '' : String(c))).join('\t') + '\n'; });
+    const ok = await copyText(tsv);
+    alert(ok ? '✅ 已复制！去 Excel / WPS 里粘贴（Ctrl+V 或长按粘贴）即可变成表格。' : '复制失败，请长按上方表格手动选择复制。');
+  }
+
+  function downloadExport() {
+    const rows = buildExportRows();
     let html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">'
       + '<head><meta charset="utf-8"><style>td,th{border:1px solid #ccc;padding:4px 8px;}th{background:#f2802f;color:#fff;}</style></head><body><table>';
-    html += '<tr>' + head.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
-    state.tasks.forEach((t) => {
-      const row = [
-        t.title, t.description || '', priText(t.priority), (t.tags || []).join(','),
-        fmt(t.due_date), fmt(t.remind_at), recText(t.recurrence), statusText(t.status),
-        fmt(t.created_at), fmt(t.completed_at)
-      ];
-      html += '<tr>' + row.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>';
-    });
+    html += '<tr>' + EXPORT_HEAD.map((h) => '<th>' + esc(h) + '</th>').join('') + '</tr>';
+    rows.forEach((r) => { html += '<tr>' + r.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>'; });
     html += '</table></body></html>';
+    const blob = new Blob(['﻿' + html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, '工作任务台_' + fmt(new Date(), false) + '.xls');
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  }
 
-    const filename = '工作任务台_' + fmt(new Date(), false) + '.xls';
-    const mime = 'application/vnd.ms-excel;charset=utf-8';
-    const blob = new Blob(['﻿' + html], { type: mime });
-    const isWeChat = /micromessenger/i.test(navigator.userAgent || '');
-
-    // 1) 非微信且支持系统分享文件 → 原生保存/打开（移动端最稳，立即弹系统面板）
-    if (!isWeChat && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: mime })] })) {
-      try {
-        navigator.share({ files: [new File([blob], filename, { type: mime })], title: '工作任务台导出' }).catch(() => {});
-        return;
-      } catch (e) { /* 继续兜底 */ }
-    }
-
-    // 2) 桌面 / 普通浏览器 → 锚点下载
-    if (!isWeChat && window.URL && URL.createObjectURL) {
-      const url = URL.createObjectURL(blob);
-      triggerDownload(url, filename);
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
-      return;
-    }
-
-    // 3) 受限环境（微信等）：新窗口打开表格，避免下载卡在遮罩
-    const reader = new FileReader();
-    reader.onload = () => {
-      const w = window.open(reader.result, '_blank');
-      if (!w) alert('未能打开新窗口，请允许弹出窗口，或在手机默认浏览器中打开本页面后再导出。');
-    };
-    reader.readAsDataURL(blob);
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) { /* 退回 execCommand */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.top = '-9999px';
+      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, ta.value.length);
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      return ok;
+    } catch (e) { return false; }
   }
 
   function triggerDownload(href, filename) {
@@ -608,6 +639,8 @@
   // ============================================================
   function bindSettingsForm() {
     $('#btn-export').addEventListener('click', exportExcel);
+    $('#btn-copy-tsv').addEventListener('click', copyExport);
+    $('#btn-download-xls').addEventListener('click', downloadExport);
   }
 
   // ============================================================

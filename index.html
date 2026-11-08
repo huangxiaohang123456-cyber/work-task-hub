@@ -189,6 +189,22 @@
       </div>
     </div>
 
+    <!-- 导出预览弹窗（App 内显示表格，主操作为复制，规避移动端下载受限） -->
+    <div id="export-modal" class="modal hidden">
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>导出数据</h2>
+          <button class="modal-close" data-close>×</button>
+        </div>
+        <p class="hint" id="export-tip"></p>
+        <div class="export-preview" id="export-preview"></div>
+        <div class="export-actions">
+          <button class="btn-primary block" id="btn-copy-tsv">📋 复制表格（粘贴到 Excel / WPS）</button>
+          <button class="btn-ghost block" id="btn-download-xls">⬇ 下载 .xls 文件</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 应用逻辑（零外部依赖） -->
     <script src="assets/config.js"></script>
     <script src="assets/app.js"></script>

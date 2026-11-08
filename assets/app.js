@@ -580,21 +580,53 @@
     if (isWeChat || isQQ) {
       dl.classList.add('hidden');
       $('#export-tip').textContent = isWeChat
-        ? '微信内无法直接下载文件。请点「复制表格」，再到电脑 Excel/WPS 里粘贴；或点右上角「…」→「在浏览器打开」后用下载。'
-        : '当前浏览器下载可能受限。请点「复制表格」粘贴到 Excel/WPS；或在手机默认浏览器打开本页后再下载。';
+        ? '微信内无法直接下载文件。请点「复制表格」，再在同手机的 Excel/WPS 里粘贴（注意：手机复制的内容不会传到电脑）。如需文件，点右上角「…」→「在浏览器打开」后用「下载 .xls」。'
+        : '当前浏览器下载可能受限。请点「复制表格」在同手机 Excel/WPS 粘贴；或在手机默认浏览器打开本页后点「下载 .xls」。';
     } else {
       dl.classList.remove('hidden');
-      $('#export-tip').textContent = '可点「复制表格」直接粘贴到 Excel/WPS，或点「下载 .xls」保存文件。';
+      $('#export-tip').textContent = '电脑/系统浏览器建议直接点「下载 .xls」得到文件；也可点「复制表格」粘贴到 Excel/WPS 变成多列表格。';
     }
     openModal('#export-modal');
   }
 
   async function copyExport() {
     const rows = buildExportRows();
+    // 纯文本 TSV（兜底）
     let tsv = '﻿' + EXPORT_HEAD.join('\t') + '\n';
     rows.forEach((r) => { tsv += r.map((c) => (c == null ? '' : String(c))).join('\t') + '\n'; });
-    const ok = await copyText(tsv);
-    alert(ok ? '✅ 已复制！去 Excel / WPS 里粘贴（Ctrl+V 或长按粘贴）即可变成表格。' : '复制失败，请长按上方表格手动选择复制。');
+    // HTML 表格（Excel/WPS 粘贴为真实多列表格，带表头底色）
+    let html = '<html><head><meta charset="utf-8"></head><body><table border="1" cellspacing="0" cellpadding="4">';
+    html += '<tr>' + EXPORT_HEAD.map((h) => '<th style="background:#f2802f;color:#fff;font-weight:700">' + esc(h) + '</th>').join('') + '</tr>';
+    rows.forEach((r) => { html += '<tr>' + r.map((c) => '<td>' + esc(c == null ? '' : c) + '</td>').join('') + '</tr>'; });
+    html += '</table></body></html>';
+
+    // 1) 优先写 HTML+文本到剪贴板：Excel 粘贴即为多列表格
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const item = new ClipboardItem({
+          'text/html': new Blob([html], { type: 'text/html' }),
+          'text/plain': new Blob([tsv], { type: 'text/plain' })
+        });
+        await navigator.clipboard.write(item);
+        alert('✅ 已复制！在 Excel / WPS 里粘贴（Ctrl+V）即为多列表格。');
+        return;
+      }
+    } catch (e) { /* 退回下方方式 */ }
+
+    // 2) 退回：选中预览表格后 execCommand 复制（桌面浏览器可靠，写入 HTML+文本）
+    try {
+      const preview = $('#export-preview');
+      const range = document.createRange();
+      range.selectNodeContents(preview);
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      const ok = document.execCommand('copy');
+      sel.removeAllRanges();
+      if (ok) { alert('✅ 已复制表格！去 Excel / WPS 粘贴（Ctrl+V）即可变成多列表格。'); return; }
+    } catch (e) {}
+
+    // 3) 仍失败：提示手动长按选择复制
+    alert('自动复制失败，请长按上方表格手动选择并复制。');
   }
 
   function downloadExport() {
@@ -608,24 +640,6 @@
     const url = URL.createObjectURL(blob);
     triggerDownload(url, '工作任务台_' + fmt(new Date(), false) + '.xls');
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-  }
-
-  async function copyText(text) {
-    try {
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        return true;
-      }
-    } catch (e) { /* 退回 execCommand */ }
-    try {
-      const ta = document.createElement('textarea');
-      ta.value = text; ta.setAttribute('readonly', '');
-      ta.style.position = 'fixed'; ta.style.top = '-9999px';
-      document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, ta.value.length);
-      const ok = document.execCommand('copy');
-      document.body.removeChild(ta);
-      return ok;
-    } catch (e) { return false; }
   }
 
   function triggerDownload(href, filename) {

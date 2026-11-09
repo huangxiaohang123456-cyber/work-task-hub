@@ -554,12 +554,153 @@
   }
 
   // ============================================================
-  // 导出：点击「导出 Excel」直接下载 .xls 文件（SpreadsheetML 格式，
-  // 列宽可靠生效）。手机自带浏览器（Safari/Chrome）可直接保存。
+  // 导出：点击「导出 Excel」直接下载真正的 .xlsx 文件（OOXML 格式，
+  // 零依赖原生生成）。手机端 WPS / Excel 可直接识别打开，不会报"实际为 xml"的格式错误。
   // ============================================================
   const EXPORT_HEAD = ['标题', '描述', '优先级', '截止时间', '提醒时间', '完成情况', '创建时间', '完成时间'];
-  // 各列宽度（点数，SpreadsheetML 用）。日期类列给足宽度，避免 Excel 显示成 ########
+  // 各列宽度（点数），导出为 .xlsx 时按 点数/7 换算为列宽单位。
   const EXPORT_COL_W = [180, 260, 70, 130, 130, 90, 130, 130];
+
+  // —— 真正的 .xlsx 生成（零依赖，store 模式 zip + OOXML）——
+  function colLetter(n) {
+    let s = '';
+    while (n > 0) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); }
+    return s;
+  }
+  function concatBytes(arrs) {
+    let len = 0; arrs.forEach((a) => { len += a.length; });
+    const out = new Uint8Array(len); let p = 0;
+    arrs.forEach((a) => { out.set(a, p); p += a.length; });
+    return out;
+  }
+  function makeZip(files) {
+    const enc = new TextEncoder();
+    const crcTable = (() => {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) { c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1); } t[n] = c >>> 0; }
+      return t;
+    })();
+    const crc32 = (buf) => {
+      let c = 0xFFFFFFFF;
+      for (let i = 0; i < buf.length; i++) { c = crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8); }
+      return (c ^ 0xFFFFFFFF) >>> 0;
+    };
+    const parts = []; const central = []; let offset = 0;
+    files.forEach((f) => {
+      const nameBytes = enc.encode(f.name);
+      const data = f.data;
+      const crc = crc32(data);
+      const local = new Uint8Array(30 + nameBytes.length);
+      const dv = new DataView(local.buffer);
+      dv.setUint32(0, 0x04034b50, true);
+      dv.setUint16(4, 20, true);
+      dv.setUint16(6, 0x0800, true);
+      dv.setUint16(8, 0, true);
+      dv.setUint16(10, 0, true);
+      dv.setUint16(12, 0x21, true);
+      dv.setUint32(14, crc, true);
+      dv.setUint32(18, data.length, true);
+      dv.setUint32(22, data.length, true);
+      dv.setUint16(26, nameBytes.length, true);
+      dv.setUint16(28, 0, true);
+      local.set(nameBytes, 30);
+      parts.push(local, data);
+      const cen = new Uint8Array(46 + nameBytes.length);
+      const cdv = new DataView(cen.buffer);
+      cdv.setUint32(0, 0x02014b50, true);
+      cdv.setUint16(4, 20, true);
+      cdv.setUint16(6, 20, true);
+      cdv.setUint16(8, 0x0800, true);
+      cdv.setUint16(10, 0, true);
+      cdv.setUint16(12, 0, true);
+      cdv.setUint16(14, 0x21, true);
+      cdv.setUint32(16, crc, true);
+      cdv.setUint32(20, data.length, true);
+      cdv.setUint32(24, data.length, true);
+      cdv.setUint16(28, nameBytes.length, true);
+      cdv.setUint16(30, 0, true);
+      cdv.setUint16(32, 0, true);
+      cdv.setUint16(34, 0, true);
+      cdv.setUint16(36, 0, true);
+      cdv.setUint32(38, 0, true);
+      cdv.setUint32(42, offset, true);
+      cen.set(nameBytes, 46);
+      central.push(cen);
+      offset += local.length + data.length;
+    });
+    const centralBuf = concatBytes(central);
+    const end = new Uint8Array(22);
+    const edv = new DataView(end.buffer);
+    edv.setUint32(0, 0x06054b50, true);
+    edv.setUint16(4, 0, true);
+    edv.setUint16(6, 0, true);
+    edv.setUint16(8, central.length, true);
+    edv.setUint16(10, central.length, true);
+    edv.setUint32(12, centralBuf.length, true);
+    edv.setUint32(16, offset, true);
+    edv.setUint16(20, 0, true);
+    return concatBytes(parts.concat([centralBuf, end]));
+  }
+  function buildXlsx(head, rows, colW, sheetName) {
+    const enc = new TextEncoder();
+    const xesc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    let cols = '<cols>';
+    colW.forEach((w, i) => { const c = i + 1; cols += '<col min="' + c + '" max="' + c + '" width="' + (w / 7).toFixed(1) + '" customWidth="1"/>'; });
+    cols += '</cols>';
+    let sheetData = '<sheetData>';
+    const writeRow = (rn, cells) => {
+      let r = '<row r="' + rn + '">';
+      cells.forEach((val, ci) => {
+        const ref = colLetter(ci + 1) + rn;
+        r += '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xesc(val == null ? '' : val) + '</t></is></c>';
+      });
+      r += '</row>';
+      return r;
+    };
+    sheetData += writeRow(1, head);
+    rows.forEach((r, i) => { sheetData += writeRow(i + 2, r.map((c) => (c == null ? '' : c))); });
+    sheetData += '</sheetData>';
+    const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' + cols + sheetData + '</worksheet>';
+    const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+      + '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
+      + '<fills count="1"><fill><patternFill patternType="none"/></fill></fills>'
+      + '<borders count="1"><border/></borders>'
+      + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+      + '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
+      + '</styleSheet>';
+    const workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
+      + 'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+      + '<sheets><sheet name="' + xesc(sheetName) + '" sheetId="1" r:id="rId1"/></sheets></workbook>';
+    const wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
+      + '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+      + '</Relationships>';
+    const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+      + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+      + '<Default Extension="xml" ContentType="application/xml"/>'
+      + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+      + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+      + '</Types>';
+    const rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+      + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
+      + '</Relationships>';
+    const files = [
+      { name: '[Content_Types].xml', data: enc.encode(contentTypes) },
+      { name: '_rels/.rels', data: enc.encode(rootRels) },
+      { name: 'xl/workbook.xml', data: enc.encode(workbook) },
+      { name: 'xl/_rels/workbook.xml.rels', data: enc.encode(wbRels) },
+      { name: 'xl/styles.xml', data: enc.encode(styles) },
+      { name: 'xl/worksheets/sheet1.xml', data: enc.encode(sheet) }
+    ];
+    return makeZip(files);
+  }
 
   function buildExportRows() {
     return state.tasks.map((t) => ([
@@ -571,37 +712,18 @@
 
   function downloadExport() {
     const rows = buildExportRows();
-    // 用 SpreadsheetML（Excel 2003 XML）生成 .xls：列宽通过 <Column ss:Width> 可靠生效，
-    // 避免 HTML 表格在 Excel 里列宽不可靠导致日期列显示成 ########。
-    let xml = '<?xml version="1.0"?>\n<?mso-application progid="Excel.Sheet"?>\n'
-      + '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" '
-      + 'xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'
-      + '<Worksheet ss:Name="工作任务台">\n<Table>\n';
-    EXPORT_COL_W.forEach((w) => { xml += '<Column ss:Width="' + w + '"/>\n'; });
-    xml += '<Row>' + EXPORT_HEAD.map((h) => '<Cell><Data ss:Type="String">' + esc(h) + '</Data></Cell>').join('') + '</Row>\n';
-    rows.forEach((r) => {
-      xml += '<Row>' + r.map((c) => '<Cell><Data ss:Type="String">' + esc(c == null ? '' : c) + '</Data></Cell>').join('') + '</Row>\n';
-    });
-    xml += '</Table>\n</Worksheet>\n</Workbook>';
-    const filename = '工作任务台_' + fmt(new Date(), false) + '.xls';
-
-    // 1) 优先 Blob + createObjectURL（桌面/系统浏览器最稳）
+    const bytes = buildXlsx(EXPORT_HEAD, rows, EXPORT_COL_W, '工作任务台');
+    const filename = '工作任务台_' + fmt(new Date(), false) + '.xlsx';
     if (window.URL && typeof URL.createObjectURL === 'function') {
       try {
-        const blob = new Blob(['﻿' + xml], { type: 'application/vnd.ms-excel;charset=utf-8' });
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const url = URL.createObjectURL(blob);
         triggerDownload(url, filename);
         setTimeout(() => URL.revokeObjectURL(url), 3000);
         return;
-      } catch (e) { /* 退回 data URI */ }
+      } catch (e) { /* 退回提示 */ }
     }
-    // 2) 兜底：data URI（不依赖 createObjectURL，受限 WebView 也可能触发下载）
-    try {
-      const dataUri = 'data:application/vnd.ms-excel;charset=utf-8,' + encodeURIComponent('﻿' + xml);
-      triggerDownload(dataUri, filename);
-      return;
-    } catch (e) {}
-    alert('当前环境不支持直接下载，请改用「复制表格」后粘贴到 Excel/WPS。');
+    alert('当前环境不支持直接下载，请在手机自带浏览器（Safari / Chrome）中打开本页面后再导出。');
   }
 
   function triggerDownload(href, filename) {

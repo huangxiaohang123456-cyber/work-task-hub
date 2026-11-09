@@ -111,7 +111,7 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .bar-row{display:flex;align-items:center;gap:10px;font-size:13px}
 .bar-row .bar-label{width:64px;color:var(--muted);flex:none}
 .bar-track{flex:1;height:12px;background:#f0f1f4;border-radius:999px;overflow:hidden}
-.bar-fill{height:100%;border-radius:999px;background:var(--primary);transition:width .3s}
+.bar-fill{display:block;height:100%;border-radius:999px;background:var(--primary);transition:width .3s}
 .bar-row .bar-val{width:30px;text-align:right;font-weight:700;flex:none}
 
 /* ---------- 完成趋势（近8周，竖向柱） ---------- */

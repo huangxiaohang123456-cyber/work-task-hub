@@ -128,9 +128,12 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
   padding:8px 0 calc(8px + env(safe-area-inset-bottom));
   box-shadow:0 -2px 12px rgba(16,24,40,.06);
 }
-.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;color:var(--muted);font-size:11px;font-weight:600}
+.tab{flex:1;display:flex;justify-content:center;align-items:flex-start;color:var(--muted);font-size:11px;font-weight:600;padding:6px 0}
+.tab-inner{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 16px;border-radius:14px;transition:background .15s,color .15s,transform .15s}
 .tab .ico{font-size:20px;line-height:1}
 .tab.active{color:var(--primary)}
+.tab.active .tab-inner{background:var(--primary-l);font-weight:800}
+.tab.active .ico{transform:scale(1.12)}
 
 /* ---------- 悬浮添加按钮 ---------- */
 .fab{

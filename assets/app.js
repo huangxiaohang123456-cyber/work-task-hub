@@ -334,8 +334,7 @@
         ${t.description ? `<div class="task-desc">${esc(t.description)}</div>` : ''}
         <div class="task-meta">
           ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
-          ${t.remind_at ? `<span class="rem">🔔 ${fmt(t.remind_at)}</span>` : ''}
-          ${t.reminded_at ? `<span class="rem-sent">📧 已提醒</span>` : ''}
+          ${t.owner_name ? `<span class="owner">👤 ${esc(t.owner_name)}</span>` : ''}
         </div>
       </div>
       <div class="task-actions">
@@ -404,14 +403,12 @@
       const id = $('#task-id').value;
       const dueVal = $('#f-due').value;
       const dueIso = dueVal ? new Date(dueVal).toISOString() : null;
-      const remVal = $('#f-remind').value;
-      const remIso = remVal ? new Date(remVal).toISOString() : null;
-      const oldRem = id ? ((state.tasks.find((x) => x.id === id) || {}).remind_at || null) : null;
-      const remChanged = remIso !== oldRem; // 都是 ISO 字符串或 null，可直比
+      const owner = $('#f-owner').value.trim();
       const title = $('#f-title').value.trim();
       const msg = $('#task-form-msg');
       if (!title) { msg.textContent = '请填写标题'; return; }
       if (!dueIso) { msg.textContent = '请填写截止日期'; return; }
+      if (!owner) { msg.textContent = '请填写负责人'; return; }
       const status = $('#f-status').value;
       const oldT = id ? state.tasks.find((x) => x.id === id) : null;
       const row = {
@@ -419,10 +416,9 @@
         description: $('#f-desc').value.trim(),
         priority: $('#f-priority').value,
         status,
-        due_date: dueIso
+        due_date: dueIso,
+        owner_name: owner
       };
-      if (remIso) row.remind_at = remIso; // 仅当设置了提醒时间才发送该字段（列未建前不影响普通任务）
-      if (remChanged) row.reminded_at = null; // 提醒时间被改动或清空时，重置发送标记以便重新触发（未改动则不碰，保留已发送状态）
       const wasDone = oldT && oldT.status === 'done';
       if (status === 'done' && !wasDone) row.completed_at = new Date().toISOString();
       else if (status !== 'done') row.completed_at = null;
@@ -457,7 +453,7 @@
       $('#f-status').value = t.status;
       $('#f-status').disabled = (t.status === 'done');
       $('#f-due').value = t.due_date ? toLocalInput(t.due_date) : '';
-      $('#f-remind').value = t.remind_at ? toLocalInput(t.remind_at) : '';
+      $('#f-owner').value = t.owner_name || '';
     } else {
       $('#task-modal-title').textContent = '添加任务';
       $('#task-form').reset();
@@ -465,7 +461,7 @@
       $('#f-priority').value = 'medium';
       $('#f-status').value = 'todo';
       $('#f-status').disabled = false;
-      $('#f-remind').value = '';
+      $('#f-owner').value = '';
     }
     openModal('#task-modal');
   }
@@ -557,7 +553,7 @@
   // 导出：点击「导出 Excel」直接下载真正的 .xlsx 文件（OOXML 格式，
   // 零依赖原生生成）。手机端 WPS / Excel 可直接识别打开，不会报"实际为 xml"的格式错误。
   // ============================================================
-  const EXPORT_HEAD = ['标题', '描述', '优先级', '截止时间', '提醒时间', '完成情况', '创建时间', '完成时间'];
+  const EXPORT_HEAD = ['标题', '描述', '优先级', '截止时间', '负责人', '完成情况', '创建时间', '完成时间'];
   // 各列宽度（点数），导出为 .xlsx 时按 点数/7 换算为列宽单位。
   const EXPORT_COL_W = [180, 260, 70, 130, 130, 90, 130, 130];
 
@@ -705,7 +701,7 @@
   function buildExportRows() {
     return state.tasks.map((t) => ([
       t.title, t.description || '', priText(t.priority),
-      fmt(t.due_date), fmt(t.remind_at), statusText(t.status),
+      fmt(t.due_date), t.owner_name || '', statusText(t.status),
       fmt(t.created_at), fmt(t.completed_at)
     ]));
   }

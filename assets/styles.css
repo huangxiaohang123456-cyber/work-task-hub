@@ -36,6 +36,8 @@ body{
 .mini-btn{font-size:13px;font-weight:700;padding:7px 12px;border-radius:9px;background:#fff;border:1px solid var(--line);color:var(--text)}
 .mini-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
 .mini-btn.danger{background:#fff;color:var(--red);border-color:#f3c2c2}
+.mini-btn.danger-strong{background:var(--red);color:#fff;border-color:var(--red)}
+.mini-btn.danger-strong:hover{filter:brightness(.94)}
 .people-loading,.empty-hint{padding:20px 0;text-align:center;color:var(--muted);font-size:14px}
 
 /* ---------- 离线/错误横幅 ---------- */

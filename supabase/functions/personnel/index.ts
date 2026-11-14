@@ -184,6 +184,28 @@ Deno.serve(async (req: Request) => {
       return json({ ok: true }, 200);
     }
 
+    // ---------- 删除账号（超级管理员可删管理员/普通人员；管理员仅可删普通人员） ----------
+    if (action === 'deleteUser') {
+      const targetId = body.user_id;
+      if (!targetId) return json({ error: '缺少目标用户' }, 400);
+      if (targetId === callerId) return json({ error: '不能删除自己' }, 400);
+
+      // 查目标角色
+      const { data: tgt } = await admin.from('profiles').select('role').eq('id', targetId).single();
+      if (!tgt) return json({ error: '未找到目标用户' }, 400);
+      // 任何人（含超管）都不能删除超级管理员账号，避免系统失去超管
+      if (SUPER_NAMES.includes(tgt.role)) return json({ error: '不能删除超级管理员账号' }, 403);
+      // 管理员只能删除普通人员
+      if (!SUPER_NAMES.includes(callerRole) && tgt.role !== 'member') {
+        return json({ error: '管理员只能删除普通人员' }, 403);
+      }
+
+      // 删除 auth 账号；数据库级 on delete cascade 会一并删除其 profiles 及该账号创建的 tasks
+      const { error } = await admin.auth.admin.deleteUser(targetId);
+      if (error) return json({ error: error.message }, 400);
+      return json({ ok: true }, 200);
+    }
+
     return json({ error: '未知操作：' + String(action) }, 400);
   } catch (e) {
     const msg = e && (e as Error).message ? (e as Error).message : String(e);

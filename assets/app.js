@@ -721,8 +721,10 @@
               actions += '<button class="mini-btn primary" data-role="admin" data-id="' + u.id + '">提拔为管理员</button>';
             }
             actions += '<button class="mini-btn danger" data-reset="' + u.id + '">重置密码</button>';
+            actions += '<button class="mini-btn danger-strong" data-del="' + u.id + '">删除账号</button>';
           } else if (myRole === 'admin' && u.role === 'member') {
             actions += '<button class="mini-btn danger" data-reset="' + u.id + '">重置密码</button>';
+            actions += '<button class="mini-btn danger-strong" data-del="' + u.id + '">删除账号</button>';
           }
         }
         li.innerHTML =
@@ -778,6 +780,13 @@
         await callPersonnel('resetPassword', { user_id: id });
         alert('已重置密码为 123456');
       } catch (err) { alert('操作失败：' + err.message); }
+    } else if (btn.dataset.del) {
+      const id = btn.dataset.del;
+      if (!confirm('确定删除该账号？\n此操作不可恢复，该账号创建的任务（含已通过的团队任务）也会一并删除！')) return;
+      try {
+        await callPersonnel('deleteUser', { user_id: id });
+        renderPeople();
+      } catch (err) { alert('删除失败：' + err.message); }
     }
   }
 

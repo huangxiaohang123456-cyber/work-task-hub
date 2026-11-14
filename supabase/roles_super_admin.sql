@@ -6,6 +6,9 @@
 -- 幂等：重复执行不会创建重复账号，也不会改掉你已修改过的密码。
 -- ============================================================
 
+-- 确保密码加密函数可用（大多数 Supabase 项目已默认启用，这里幂等兜底）
+create extension if not exists pgcrypto;
+
 do $$
 declare new_id uuid;
 begin

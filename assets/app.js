@@ -1040,8 +1040,11 @@
   // ============================================================
   function bindSettingsForm() {
     $('#btn-export').addEventListener('click', () => {
-      if (!state.tasks.length) { alert('当前没有任务可导出'); return; }
-      downloadExport(null, '工作任务台');
+      // 导出「全员已通过」的任务（审批状态 = approved），与任务模块公开看板口径一致；
+      // 普通人员本来也只能看到全员的已通过任务，管理员/超管则导出所有人的已通过任务。
+      const approvedTasks = state.tasks.filter((t) => t.approval_status === 'approved');
+      if (!approvedTasks.length) { alert('当前没有已通过的任务可导出'); return; }
+      downloadExport(approvedTasks, '工作任务台_已通过');
     });
     $('#btn-export-done').addEventListener('click', () => {
       const doneTasks = state.tasks.filter((t) => t.status === 'done');

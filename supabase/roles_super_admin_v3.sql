@@ -68,11 +68,11 @@ begin
 
   -- 关键：补身份关联记录，否则 GoTrue 登录查 schema 会 500
   insert into auth.identities (
-    id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+    id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
   ) values (
     gen_random_uuid(), new_id,
     jsonb_build_object('sub', new_id::text, 'email', '02602069@wtb.local'),
-    'email', now(), now(), now()
+    'email', '02602069@wtb.local', now(), now(), now()
   );
 
   -- 写入 profiles 角色（幂等）

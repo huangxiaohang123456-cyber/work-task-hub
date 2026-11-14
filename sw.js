@@ -1,9 +1,11 @@
 /* 工作任务台 · Service Worker
  * 导航与静态资源均「网络优先」，离线才回退缓存 —— 保证每次部署后
  * 手机端（PWA）都能拿到最新代码，不再被旧缓存卡成白屏。
- * 缓存版本号随大改递增；即便不改版本，网络优先策略也会自动刷新。
+ * 关键：fetch 使用 cache:'no-store'，绕过 GitHub Pages 的
+ * Cache-Control: max-age=600 HTTP 缓存，避免拉到 10 分钟前的旧 app.js。
+ * 缓存版本号随大改递增；更改本文件时请同步递增下方 CACHE 与 app.js 中的注册版本号。
  */
-const CACHE = 'wtb-v7';
+const CACHE = 'wtb-v8';
 const SHELL = ['./', './index.html', './assets/styles.css', './assets/app.js', './assets/config.js', './assets/icon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
@@ -27,7 +29,8 @@ self.addEventListener('activate', (e) => {
 
 async function networkFirst(req) {
   try {
-    const res = await fetch(req);
+    // 用 no-store 绕过 GitHub Pages 的 max-age=600 HTTP 缓存，确保每次都拉最新文件
+    const res = await fetch(req, { cache: 'no-store' });
     if (res && res.ok) {
       const cp = res.clone();
       caches.open(CACHE).then((c) => c.put(req, cp)).catch(() => {});

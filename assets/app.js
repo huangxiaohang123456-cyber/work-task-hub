@@ -1105,7 +1105,8 @@
 
   function registerSW() {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      // 注册带版本号，使本文件（sw.js）变更后能尽快被浏览器拉取，不被 HTTP 缓存卡住
+      navigator.serviceWorker.register('sw.js?v=8').catch(() => {});
     }
   }
 })();

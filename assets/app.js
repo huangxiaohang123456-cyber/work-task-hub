@@ -333,7 +333,10 @@
   function isManager() { return ['admin'].concat(SUPER_NAMES).includes((state.profile && state.profile.role) || 'member'); }
   function isCreator(t) { return !!(t.created_by && meUid() && t.created_by === meUid()); }
   function apprText(s) { return { pending: '待审批', approved: '已通过', rejected: '已驳回' }[s] || s || ''; }
-  function canEdit(t) { return isCreator(t) && t.approval_status === 'rejected'; }
+  function canEdit(t) {
+    // 创建人：被驳回后可编辑并重提；管理员/超管：可编辑任意「已通过」任务的内容（标题/截止日期/负责人等），应对临时改期等场景
+    return (isCreator(t) && t.approval_status === 'rejected') || (isManager() && t.approval_status === 'approved');
+  }
   function canDelete(t) { return isManager() || (isCreator(t) && t.approval_status === 'rejected'); }
   // 执行状态（待办/进行中/已完成）：创建人 或 管理员/超管 可改「已通过」任务的状态
   function canChangeStatus(t) { return (isManager() || isCreator(t)) && t.approval_status === 'approved'; }

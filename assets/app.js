@@ -1004,18 +1004,19 @@
     return makeZip(files);
   }
 
-  function buildExportRows() {
-    return state.tasks.map((t) => ([
+  function buildExportRows(tasks) {
+    const src = tasks || state.tasks;
+    return src.map((t) => ([
       t.title, t.description || '', priText(t.priority),
       fmt(t.due_date), t.owner_name || '', statusText(t.status),
       apprText(t.approval_status), fmt(t.created_at), fmt(t.completed_at)
     ]));
   }
 
-  function downloadExport() {
-    const rows = buildExportRows();
+  function downloadExport(tasks, filenamePrefix) {
+    const rows = buildExportRows(tasks);
     const bytes = buildXlsx(EXPORT_HEAD, rows, EXPORT_COL_W, '工作任务台');
-    const filename = '工作任务台_' + fmt(new Date(), false) + '.xlsx';
+    const filename = (filenamePrefix || '工作任务台') + '_' + fmt(new Date(), false) + '.xlsx';
     if (window.URL && typeof URL.createObjectURL === 'function') {
       try {
         const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -1040,7 +1041,12 @@
   function bindSettingsForm() {
     $('#btn-export').addEventListener('click', () => {
       if (!state.tasks.length) { alert('当前没有任务可导出'); return; }
-      downloadExport();
+      downloadExport(null, '工作任务台');
+    });
+    $('#btn-export-done').addEventListener('click', () => {
+      const doneTasks = state.tasks.filter((t) => t.status === 'done');
+      if (!doneTasks.length) { alert('当前没有已完成的任务可导出'); return; }
+      downloadExport(doneTasks, '工作任务台_已完成');
     });
   }
 

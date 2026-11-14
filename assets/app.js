@@ -666,11 +666,12 @@
     list.innerHTML = '<li class="people-loading">加载中…</li>';
     try {
       const data = await callPersonnel('list', {});
-      // 不显示超级管理员账号（无论谁在查看）：避免管理员看到超管账号，也避免超管看到自己冗余的一行
-      const users = (data.users || []).filter((u) => !SUPER_NAMES.includes(u.role));
-      if (!users.length) { list.innerHTML = '<li class="empty-hint">暂无人员</li>'; return; }
       const myRole = state.profile.role;
       const myId = state.session ? state.session.user.id : null;
+      // 按查看者身份屏蔽：管理员/普通人员看不到超级管理员账号；超级管理员自己查看时仍显示（含自己）
+      const isViewerSuper = SUPER_NAMES.includes(myRole);
+      const users = (data.users || []).filter((u) => isViewerSuper || !SUPER_NAMES.includes(u.role));
+      if (!users.length) { list.innerHTML = '<li class="empty-hint">暂无人员</li>'; return; }
       list.innerHTML = '';
       users.forEach((u) => {
         const li = document.createElement('li');

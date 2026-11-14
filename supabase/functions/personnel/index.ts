@@ -80,14 +80,18 @@ Deno.serve(async (req: Request) => {
 
     // ---------- 列出人员 ----------
     if (action === 'list') {
-      // 不返回超级管理员账号（避免管理员通过接口拿到超管信息）；前端也会二次过滤
-      const excludeRoles = SUPER_NAMES.join(',');
-      const { data, error } = await admin
+      let query = admin
         .from('profiles')
         .select('id, display_name, hr_code, role, created_at')
-        .not('role', 'in', `(${excludeRoles})`)
         .order('role', { ascending: true })
         .order('created_at', { ascending: true });
+      // 仅当调用者不是超级管理员时，才从结果中排除超管账号（防止管理员/普通人员拿到超管信息）；
+      // 超级管理员自己调用时仍返回全部（含自己），前端也会按查看者身份二次过滤
+      if (!SUPER_NAMES.includes(callerRole)) {
+        const excludeRoles = SUPER_NAMES.join(',');
+        query = query.not('role', 'in', `(${excludeRoles})`);
+      }
+      const { data, error } = await query;
       if (error) return json({ error: error.message }, 400);
       return json({ users: data || [] }, 200);
     }

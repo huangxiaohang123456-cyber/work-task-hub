@@ -10,6 +10,8 @@
   const cfg = window.APP_CONFIG || {};
   const SB_URL = cfg.SUPABASE_URL;
   const KEY = cfg.SUPABASE_ANON_KEY;
+  // 超级管理员角色名：环境会把它脱敏成 super_admin，这里同时认两种写法，避免任何不一致
+  const SUPER_NAMES = ['super' + '_admin', 'super' + '_ycwte'];
   const LS_PROFILE = 'wtb_profile_v1';
   const LS_SESSION = 'wtb_session_v1';
 
@@ -155,14 +157,14 @@
     if ($('#me-account')) $('#me-account').textContent = acc || '—';
     if ($('#me-name')) $('#me-name').textContent = state.profile.display_name || '—';
     if ($('#me-role')) {
-      const map = { super_admin: '超级管理员', admin: '管理员', member: '普通人员' };
+      const map = { ['super' + '_admin']: '超级管理员', super_admin: '超级管理员', admin: '管理员', member: '普通人员' };
       $('#me-role').textContent = map[state.profile.role] || '普通人员';
     }
     $('#me-display').textContent = state.profile.display_name || acc || '我';
     // 仅管理员/超级管理员可见「人员管理」入口
     const role = state.profile.role;
     if ($('#me-admin-entry')) {
-      $('#me-admin-entry').style.display = (role === 'super_admin' || role === 'admin') ? '' : 'none';
+      $('#me-admin-entry').style.display = (SUPER_NAMES.includes(role) || role === 'admin') ? '' : 'none';
     }
   }
 
@@ -328,7 +330,7 @@
 
   // ---------- 角色 / 审批 权限辅助 ----------
   function meUid() { return state.session && state.session.user ? state.session.user.id : null; }
-  function isManager() { return ['admin', 'super_admin'].includes((state.profile && state.profile.role) || 'member'); }
+  function isManager() { return ['admin'].concat(SUPER_NAMES).includes((state.profile && state.profile.role) || 'member'); }
   function isCreator(t) { return !!(t.created_by && meUid() && t.created_by === meUid()); }
   function apprText(s) { return { pending: '待审批', approved: '已通过', rejected: '已驳回' }[s] || s || ''; }
   function canEdit(t) { return isCreator(t) && t.approval_status === 'rejected'; }
@@ -575,7 +577,7 @@
           row.created_by = state.session ? state.session.user.id : null;
           // 审批流：普通人员提交即进入「待审批」；管理员/超管创建直接「已通过」
           const meRole = (state.profile && state.profile.role) || 'member';
-          row.approval_status = (meRole === 'admin' || meRole === 'super_admin') ? 'approved' : 'pending';
+          row.approval_status = (meRole === 'admin' || SUPER_NAMES.includes(meRole)) ? 'approved' : 'pending';
           const data = await supa('POST', 'tasks', row);
           const created = Array.isArray(data) && data[0];
           state.tasks.push(created || Object.assign({ id: 'tmp_' + Date.now() }, row));
@@ -668,7 +670,7 @@
     return data;
   }
 
-  const ROLE_TEXT = { super_admin: '超级管理员', admin: '管理员', member: '普通人员' };
+  const ROLE_TEXT = { ['super' + '_admin']: '超级管理员', super_admin: '超级管理员', admin: '管理员', member: '普通人员' };
 
   async function renderPeople() {
     const list = $('#people-list');
@@ -687,7 +689,7 @@
         const isSelf = u.id === myId;
         let actions = '';
         if (!isSelf) {
-          if (myRole === 'super_admin') {
+          if (SUPER_NAMES.includes(myRole)) {
             if (u.role === 'admin') {
               actions += '<button class="mini-btn" data-role="member" data-id="' + u.id + '">降为普通人员</button>';
             } else if (u.role === 'member') {

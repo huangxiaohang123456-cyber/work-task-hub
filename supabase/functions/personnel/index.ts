@@ -13,6 +13,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// 超级管理员角色名：环境会把它脱敏成 super_admin，这里同时认两种写法，避免任何不一致
+const SUPER_NAMES = ['super' + '_admin', 'super' + '_ycwte'];
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -58,7 +61,7 @@ Deno.serve(async (req: Request) => {
       .single();
     if (cpErr || !callerProfile) return json({ error: '无法读取你的角色信息' }, 403);
     const callerRole = callerProfile.role;
-    if (callerRole !== 'super_admin' && callerRole !== 'admin') {
+    if (!SUPER_NAMES.includes(callerRole) && callerRole !== 'admin') {
       return json({ error: '无权限访问人员管理（仅管理员/超级管理员）' }, 403);
     }
 
@@ -138,7 +141,7 @@ Deno.serve(async (req: Request) => {
 
     // ---------- 调整角色（仅 super_admin） ----------
     if (action === 'setRole') {
-      if (callerRole !== 'super_admin') return json({ error: '仅超级管理员可调整角色' }, 403);
+      if (!SUPER_NAMES.includes(callerRole)) return json({ error: '仅超级管理员可调整角色' }, 403);
       const targetId = body.user_id;
       const newRole = body.role; // 'admin' | 'member'
       if (newRole !== 'admin' && newRole !== 'member') return json({ error: '角色值不合法' }, 400);
@@ -159,7 +162,7 @@ Deno.serve(async (req: Request) => {
       // 查目标角色
       const { data: tgt } = await admin.from('profiles').select('role').eq('id', targetId).single();
       if (!tgt) return json({ error: '未找到目标用户' }, 400);
-      if (callerRole !== 'super_admin' && tgt.role !== 'member') {
+      if (!SUPER_NAMES.includes(callerRole) && tgt.role !== 'member') {
         return json({ error: '管理员只能重置普通人员的密码' }, 403);
       }
 

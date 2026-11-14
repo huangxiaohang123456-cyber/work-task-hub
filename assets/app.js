@@ -341,11 +341,12 @@
   // 执行状态（待办/进行中/已完成）：创建人 或 管理员/超管 可改「已通过」任务的状态
   function canChangeStatus(t) { return (isManager() || isCreator(t)) && t.approval_status === 'approved'; }
   function canApprove(t) { return isManager() && t.approval_status !== 'approved'; }
-  // 任务「可见范围」：本人创建的任务（任意状态）始终可见；已通过任务全员可见（对齐 RLS「已通过→全员可见」）。
-  function isVisibleTask(t) { return isCreator(t) || t.approval_status === 'approved'; }
+  // 任务页 / 统计页的「可见范围」：仅显示「已通过」的任务（公开看板，全员可见）。
+  // 待审批 / 已驳回的任务统一只在「团队」模块显示（管理员看"待我审批"区，普通人员看"我提交的任务"区），不进任务页。
+  function isVisibleTask(t) { return t.approval_status === 'approved'; }
 
   function renderTasks() {
-    // 任务页：本人创建的任务（任意状态）始终可见；「已通过」任务全员可见（符合 RLS 的"已通过→全员可见"）。
+    // 任务页 = 公开看板：只显示「已通过」的任务，全员可见（待审批/已驳回在「团队」模块，不在此出现）。
     // 权限：只有创建人 + 管理员/超管能改已通过任务的状态（见 canChangeStatus），其他普通人员只能看、不能改。
     const list = state.tasks.filter((t) =>
       isVisibleTask(t) && matchView(t) && matchOther(t));
@@ -489,7 +490,8 @@
   function updateTaskStats() {
     const now = new Date();
     const c = { todo: 0, doing: 0, done: 0, over: 0 };
-    state.tasks.forEach((t) => {
+    // 任务页顶部统计只统计「已通过」的公开看板任务，与下方列表口径一致
+    state.tasks.filter((t) => t.approval_status === 'approved').forEach((t) => {
       if (t.status === 'todo') c.todo++;
       else if (t.status === 'doing') c.doing++;
       else if (t.status === 'done') c.done++;
@@ -774,7 +776,7 @@
   // 统计页（CSS 图表，无 Chart.js）
   // ============================================================
   function renderStats() {
-    // 团队口径：本人任务 + 全部已通过任务（与任务页列表、顶部统计一致），所有角色都能看到团队整体进度
+    // 与任务页一致：仅统计「已通过」的公开看板任务（待审批/已驳回在团队模块，不计入），全员可见团队整体进度
     const tasks = state.tasks.filter(isVisibleTask);
     const total = tasks.length;
     const done = tasks.filter((t) => t.status === 'done').length;

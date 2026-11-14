@@ -238,6 +238,7 @@
       bindSettingsForm();
       bindAuth();
       registerSW();
+      const rs = $('#reject-submit'); if (rs) rs.addEventListener('click', onSubmitReject);
 
       $('#me-display').textContent = state.profile.name || '我';
 
@@ -274,7 +275,7 @@
         state.tasks = [];
       }
     }
-    renderTasks(); renderStats();
+    renderTasks(); renderStats(); renderTeam();
   }
 
   function showOfflineBanner(text) {
@@ -315,8 +316,18 @@
     return true;
   }
 
+  // ---------- 角色 / 审批 权限辅助 ----------
+  function meUid() { return state.session && state.session.user ? state.session.user.id : null; }
+  function isManager() { return ['admin', 'super_admin'].includes((state.profile && state.profile.role) || 'member'); }
+  function isCreator(t) { return !!(t.created_by && meUid() && t.created_by === meUid()); }
+  function apprText(s) { return { pending: '待审批', approved: '已通过', rejected: '已驳回' }[s] || s || ''; }
+  function canEdit(t) { return isCreator(t) && t.approval_status === 'rejected'; }
+  function canDelete(t) { return isManager() || (isCreator(t) && t.approval_status === 'rejected'); }
+  function canChangeStatus(t) { return isCreator(t) && t.approval_status === 'approved'; }
+  function canApprove(t) { return isManager() && t.approval_status !== 'approved'; }
+
   function renderTasks() {
-    const list = state.tasks.filter((t) => matchView(t) && matchOther(t));
+    const list = state.tasks.filter((t) => isCreator(t) && matchView(t) && matchOther(t));
     taskList.innerHTML = '';
     emptyHint.classList.toggle('hidden', list.length > 0);
     const active = list.filter((t) => t.status !== 'done');
@@ -335,7 +346,9 @@
     updateTaskStats();
   }
 
-  function makeCard(t, isDone) {
+  function makeCard(t, isDone, opts) {
+    opts = opts || {};
+    const showApprove = !!opts.showApprove;
     const li = document.createElement('li');
     li.className = 'task-card';
     const dueCls = (() => {
@@ -345,6 +358,26 @@
       if (t.status !== 'done' && (d - now) <= 24 * 3600 * 1000) return 'soon';
       return '';
     })();
+    const apprBadge = `<span class="appr ${t.approval_status || 'approved'}">● ${apprText(t.approval_status)}</span>`
+      + (t.approval_status === 'rejected' && t.reject_reason ? `<span class="appr-reason">驳回原因：${esc(t.reject_reason)}</span>` : '');
+
+    let actions = '';
+    if (showApprove) {
+      // 审批工作台：仅通过 / 驳回
+      actions = `<button class="icon-btn approve" data-approve="${t.id}">通过</button>`
+              + `<button class="icon-btn danger" data-reject="${t.id}">驳回</button>`;
+    } else {
+      const sel = canChangeStatus(t)
+        ? `<select class="status-select" data-id="${t.id}" ${isDone ? 'disabled' : ''}>`
+            + `<option value="todo" ${t.status === 'todo' ? 'selected' : ''}>待办</option>`
+            + `<option value="doing" ${t.status === 'doing' ? 'selected' : ''}>进行中</option>`
+            + `<option value="done" ${t.status === 'done' ? 'selected' : ''}>已完成</option>`
+          + `</select>` : '';
+      const edit = canEdit(t) ? `<button class="icon-btn" data-edit="${t.id}">编辑</button>` : '';
+      const del = canDelete(t) ? `<button class="icon-btn danger" data-del="${t.id}">删除</button>` : '';
+      actions = sel + edit + del;
+    }
+
     li.innerHTML = `
       <div class="task-main">
         <div class="task-title"><span class="badge ${t.priority}">${priText(t.priority)}</span><span>${esc(t.title)}</span></div>
@@ -352,18 +385,94 @@
         <div class="task-meta">
           ${t.due_date ? `<span class="due ${dueCls}">⏰ ${fmt(t.due_date)}</span>` : ''}
           ${t.owner_name ? `<span class="owner">👤 ${esc(t.owner_name)}</span>` : ''}
+          ${apprBadge}
         </div>
       </div>
-      <div class="task-actions">
-        <select class="status-select" data-id="${t.id}" ${isDone ? 'disabled' : ''}>
-          <option value="todo" ${t.status === 'todo' ? 'selected' : ''}>待办</option>
-          <option value="doing" ${t.status === 'doing' ? 'selected' : ''}>进行中</option>
-          <option value="done" ${t.status === 'done' ? 'selected' : ''}>已完成</option>
-        </select>
-        <button class="icon-btn" data-edit="${t.id}">编辑</button>
-        <button class="icon-btn danger" data-del="${t.id}">删除</button>
-      </div>`;
+      <div class="task-actions">${actions}</div>`;
     return li;
+  }
+
+  // ============================================================
+  // 团队页 / 审批流
+  // ============================================================
+  let pendingRejectId = null;
+
+  function renderTeam() {
+    const approveZone = $('#approve-zone');
+    const approveList = $('#approve-list');
+    const teamList = $('#team-list');
+    if (!teamList) return;
+    // 待我审批（仅管理员/超管）
+    if (approveZone && approveList) {
+      if (isManager()) {
+        approveZone.classList.remove('hidden');
+        const pend = state.tasks.filter((t) => t.approval_status !== 'approved');
+        approveList.innerHTML = '';
+        const ae = $('#approve-empty'); if (ae) ae.classList.toggle('hidden', pend.length > 0);
+        pend.forEach((t) => approveList.appendChild(makeCard(t, t.status === 'done', { showApprove: true })));
+      } else {
+        approveZone.classList.add('hidden');
+      }
+    }
+    // 团队任务（已通过，全员可见）
+    const team = state.tasks.filter((t) => t.approval_status === 'approved');
+    teamList.innerHTML = '';
+    const te = $('#team-empty'); if (te) te.classList.toggle('hidden', team.length > 0);
+    team.forEach((t) => teamList.appendChild(makeCard(t, t.status === 'done', { showApprove: false })));
+    bindTeamEvents();
+  }
+
+  function bindTeamEvents() {
+    const approveList = $('#approve-list');
+    if (approveList) {
+      approveList.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => onApprove(b.dataset.approve)));
+      approveList.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => openReject(b.dataset.reject)));
+    }
+    const teamList = $('#team-list');
+    if (teamList) {
+      teamList.querySelectorAll('.status-select').forEach((sel) => sel.addEventListener('change', async () => {
+        const t = state.tasks.find((x) => x.id === sel.dataset.id);
+        if (!t) return;
+        const v = sel.value;
+        t.status = v;
+        t.completed_at = v === 'done' ? new Date().toISOString() : null;
+        try { await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(t.id), { status: v, completed_at: t.completed_at }); }
+        catch (e) { alert('更新失败：' + (e.message || e)); }
+        renderTeam(); renderStats();
+      }));
+    }
+  }
+
+  async function onApprove(id) {
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) return;
+    if (!confirm('确认通过该任务？通过后全员可见。')) return;
+    try {
+      await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(id), { approval_status: 'approved', approved_by: meUid() });
+      t.approval_status = 'approved'; t.approved_by = meUid();
+    } catch (e) { return alert('操作失败：' + (e.message || e)); }
+    renderTeam(); renderTasks(); renderStats();
+  }
+
+  function openReject(id) {
+    pendingRejectId = id;
+    const r = $('#reject-reason'); if (r) r.value = '';
+    const m = $('#reject-msg'); if (m) m.textContent = '';
+    openModal('#reject-modal');
+  }
+
+  async function onSubmitReject() {
+    const id = pendingRejectId;
+    if (!id) return;
+    const reason = ($('#reject-reason').value || '').trim();
+    if (!reason) { const m = $('#reject-msg'); if (m) m.textContent = '请填写驳回原因'; return; }
+    const t = state.tasks.find((x) => x.id === id);
+    try {
+      await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(id), { approval_status: 'rejected', reject_reason: reason, approved_by: meUid() });
+      if (t) { t.approval_status = 'rejected'; t.reject_reason = reason; t.approved_by = meUid(); }
+    } catch (e) { const m = $('#reject-msg'); if (m) m.textContent = '操作失败：' + (e.message || e); return; }
+    closeModal('#reject-modal');
+    renderTeam(); renderTasks(); renderStats();
   }
 
   function updateTaskStats() {
@@ -442,12 +551,21 @@
       try {
         if (id) {
           const t = state.tasks.find((x) => x.id === id);
-          if (t) Object.assign(t, row);
+          if (t) {
+            Object.assign(t, row);
+            // 普通人员重新提交被驳回的任务 -> 回到「待审批」
+            if ((state.profile.role || 'member') === 'member' && t.approval_status === 'rejected') {
+              t.approval_status = 'pending';
+              row.approval_status = 'pending';
+            }
+          }
           await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(id), row);
         } else {
           row.created_at = new Date().toISOString();
           row.created_by = state.session ? state.session.user.id : null;
-          row.approval_status = 'approved'; // 第一阶段：新任务默认已通过、全员可见；审批流在第三阶段接入
+          // 审批流：普通人员提交即进入「待审批」；管理员/超管创建直接「已通过」
+          const meRole = (state.profile && state.profile.role) || 'member';
+          row.approval_status = (meRole === 'admin' || meRole === 'super_admin') ? 'approved' : 'pending';
           const data = await supa('POST', 'tasks', row);
           const created = Array.isArray(data) && data[0];
           state.tasks.push(created || Object.assign({ id: 'tmp_' + Date.now() }, row));
@@ -472,6 +590,8 @@
       $('#f-status').disabled = (t.status === 'done');
       $('#f-due').value = t.due_date ? toLocalInput(t.due_date) : '';
       $('#f-owner').value = t.owner_name || '';
+      // 普通人员编辑时负责人锁定为本人（管理员可改）
+      $('#f-owner').disabled = ((state.profile.role || 'member') === 'member');
     } else {
       $('#task-modal-title').textContent = '添加任务';
       $('#task-form').reset();
@@ -480,6 +600,13 @@
       $('#f-status').value = 'todo';
       $('#f-status').disabled = false;
       $('#f-owner').value = '';
+      // 普通人员添加任务：负责人默认本人且锁定（负责人=本人名字）
+      if ((state.profile.role || 'member') === 'member') {
+        $('#f-owner').value = state.profile.display_name || state.profile.hr_code || '';
+        $('#f-owner').disabled = true;
+      } else {
+        $('#f-owner').disabled = false;
+      }
     }
     openModal('#task-modal');
   }
@@ -502,6 +629,7 @@
     document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.page === page));
     document.querySelectorAll('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-' + page));
     $('#fab').classList.toggle('hidden', page !== 'tasks');
+    if (page === 'team') renderTeam();
   }
 
   function bindToolbar() {
@@ -520,7 +648,7 @@
   // 统计页（CSS 图表，无 Chart.js）
   // ============================================================
   function renderStats() {
-    const tasks = state.tasks;
+    const tasks = state.tasks.filter(isCreator);
     const total = tasks.length;
     const done = tasks.filter((t) => t.status === 'done').length;
     const doing = tasks.filter((t) => t.status === 'doing').length;
@@ -555,7 +683,7 @@
       weeks.push({ ws: startOfWeek(end), we: endOfWeek(end), label: fmt(startOfWeek(end), false).slice(5) });
     }
     const counts = weeks.map((w) =>
-      state.tasks.filter((t) => {
+      state.tasks.filter(isCreator).filter((t) => {
         if (!t.completed_at) return false;
         const c = new Date(t.completed_at);
         return c >= w.ws && c < w.we;
@@ -571,9 +699,9 @@
   // 导出：点击「导出 Excel」直接下载真正的 .xlsx 文件（OOXML 格式，
   // 零依赖原生生成）。手机端 WPS / Excel 可直接识别打开，不会报"实际为 xml"的格式错误。
   // ============================================================
-  const EXPORT_HEAD = ['标题', '描述', '优先级', '截止时间', '负责人', '完成情况', '创建时间', '完成时间'];
+  const EXPORT_HEAD = ['标题', '描述', '优先级', '截止时间', '负责人', '完成情况', '审批状态', '创建时间', '完成时间'];
   // 各列宽度（点数），导出为 .xlsx 时按 点数/7 换算为列宽单位。
-  const EXPORT_COL_W = [180, 260, 70, 130, 130, 90, 130, 130];
+  const EXPORT_COL_W = [180, 260, 70, 130, 130, 90, 90, 130, 130];
 
   // —— 真正的 .xlsx 生成（零依赖，store 模式 zip + OOXML）——
   function colLetter(n) {
@@ -720,7 +848,7 @@
     return state.tasks.map((t) => ([
       t.title, t.description || '', priText(t.priority),
       fmt(t.due_date), t.owner_name || '', statusText(t.status),
-      fmt(t.created_at), fmt(t.completed_at)
+      apprText(t.approval_status), fmt(t.created_at), fmt(t.completed_at)
     ]));
   }
 

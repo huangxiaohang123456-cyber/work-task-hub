@@ -100,6 +100,20 @@
         </div>
       </section>
 
+      <!-- ============ 团队页 ============ -->
+      <section id="page-team" class="page">
+        <div id="approve-zone" class="panel hidden">
+          <h3 class="panel-title">待我审批</h3>
+          <ul id="approve-list" class="task-list"></ul>
+          <p id="approve-empty" class="empty-hint hidden">暂无待审批任务</p>
+        </div>
+        <div class="panel">
+          <h3 class="panel-title">团队任务（已通过）</h3>
+          <ul id="team-list" class="task-list"></ul>
+          <p id="team-empty" class="empty-hint hidden">暂无已通过任务</p>
+        </div>
+      </section>
+
       <!-- ============ 我的页 ============ -->
       <section id="page-me" class="page">
         <div class="panel">
@@ -123,6 +137,7 @@
     <nav class="tabbar">
       <button class="tab active" data-page="tasks"><span class="tab-inner"><span class="ico">📋</span><span>任务</span></span></button>
       <button class="tab" data-page="stats"><span class="tab-inner"><span class="ico">📊</span><span>统计</span></span></button>
+      <button class="tab" data-page="team"><span class="tab-inner"><span class="ico">🏢</span><span>团队</span></span></button>
       <button class="tab" data-page="me"><span class="tab-inner"><span class="ico">👤</span><span>我的</span></span></button>
     </nav>
 
@@ -194,6 +209,21 @@
         <div class="modal-foot">
           <button type="button" class="btn-ghost" data-close>取消</button>
           <button type="button" class="btn-primary" id="pwd-submit">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 驳回原因 -->
+    <div id="reject-modal" class="modal hidden">
+      <div class="modal-card">
+        <h3 class="modal-title">驳回任务</h3>
+        <label>驳回原因（必填）
+          <textarea id="reject-reason" rows="3" placeholder="请说明驳回原因，便于对方修改后重新提交"></textarea>
+        </label>
+        <p id="reject-msg" class="form-msg"></p>
+        <div class="modal-foot">
+          <button type="button" class="btn-ghost" data-close>取消</button>
+          <button type="button" class="btn-primary" id="reject-submit">确认驳回</button>
         </div>
       </div>
     </div>

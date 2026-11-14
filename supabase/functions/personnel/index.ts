@@ -80,9 +80,12 @@ Deno.serve(async (req: Request) => {
 
     // ---------- 列出人员 ----------
     if (action === 'list') {
+      // 不返回超级管理员账号（避免管理员通过接口拿到超管信息）；前端也会二次过滤
+      const excludeRoles = SUPER_NAMES.join(',');
       const { data, error } = await admin
         .from('profiles')
         .select('id, display_name, hr_code, role, created_at')
+        .not('role', 'in', `(${excludeRoles})`)
         .order('role', { ascending: true })
         .order('created_at', { ascending: true });
       if (error) return json({ error: error.message }, 400);

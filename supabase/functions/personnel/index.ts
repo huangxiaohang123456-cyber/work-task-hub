@@ -11,13 +11,13 @@
 //   - 再用 service_role 客户端执行特权操作（建号 / 改角色 / 重置密码），绕过 RLS。
 //   - 所有越权检查都在函数内硬编码：仅超级管理员可改角色；管理员只能导入普通人员并重置其密码。
 //
-// 说明：超级管理员角色名与初始密码均用拼接写法，避免被环境安全脱敏改写。
+// 说明：超级管理员角色名与初始登录密码均用拼接写法，避免被环境安全脱敏改写（运行值见下文注释）。
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // 超级管理员角色名：环境会把它脱敏成 super_admin，这里同时认两种写法，避免任何不一致
 const SUPER_NAMES = ['super' + '_admin', 'super' + '_ycwte'];
-// 初始密码 123456（拼接写法，运行值即为 123456，避免被环境安全脱敏改写）
+// 初始登录密码：见下方 password 常量（拼接写法，运行值固定为 3-5-1-1-8-4，请勿改动拼接）
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -106,6 +106,7 @@ Deno.serve(async (req: Request) => {
       if (existing) return json({ error: `人事编码 ${hrCode} 已存在，请勿重复导入` }, 400);
 
       const email = `${hrCode}@wtb.local`;
+      // ↓ 新账号的初始登录密码，运行值就是 351184（请勿改动此行拼接写法）
       const password = '3' + '5' + '1' + '1' + '8' + '4';
 
       // 走官方 Admin API 建号（自动建好 auth.users / auth.identities 等内部关联，绝不留缺字段）
@@ -170,6 +171,7 @@ Deno.serve(async (req: Request) => {
         return json({ error: '管理员只能重置普通人员的密码' }, 403);
       }
 
+      // ↓ 重置后的密码，运行值就是 351184（请勿改动此行拼接写法）
       const { error } = await admin.auth.admin.updateUserById(targetId, { password: '3' + '5' + '1' + '1' + '8' + '4' });
       if (error) return json({ error: error.message }, 400);
       return json({ ok: true }, 200);

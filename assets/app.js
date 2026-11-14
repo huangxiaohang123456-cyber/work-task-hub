@@ -338,12 +338,14 @@
   // 执行状态（待办/进行中/已完成）：创建人 或 管理员/超管 可改「已通过」任务的状态
   function canChangeStatus(t) { return (isManager() || isCreator(t)) && t.approval_status === 'approved'; }
   function canApprove(t) { return isManager() && t.approval_status !== 'approved'; }
+  // 任务「可见范围」：本人创建的任务（任意状态）始终可见；已通过任务全员可见（对齐 RLS「已通过→全员可见」）。
+  function isVisibleTask(t) { return isCreator(t) || t.approval_status === 'approved'; }
 
   function renderTasks() {
     // 任务页：本人创建的任务（任意状态）始终可见；「已通过」任务全员可见（符合 RLS 的"已通过→全员可见"）。
     // 权限：只有创建人 + 管理员/超管能改已通过任务的状态（见 canChangeStatus），其他普通人员只能看、不能改。
     const list = state.tasks.filter((t) =>
-      (isCreator(t) || t.approval_status === 'approved') && matchView(t) && matchOther(t));
+      isVisibleTask(t) && matchView(t) && matchOther(t));
     taskList.innerHTML = '';
     emptyHint.classList.toggle('hidden', list.length > 0);
     const active = list.filter((t) => t.status !== 'done');
@@ -758,7 +760,8 @@
   // 统计页（CSS 图表，无 Chart.js）
   // ============================================================
   function renderStats() {
-    const tasks = state.tasks.filter(isCreator);
+    // 团队口径：本人任务 + 全部已通过任务（与任务页列表、顶部统计一致），所有角色都能看到团队整体进度
+    const tasks = state.tasks.filter(isVisibleTask);
     const total = tasks.length;
     const done = tasks.filter((t) => t.status === 'done').length;
     const doing = tasks.filter((t) => t.status === 'doing').length;
@@ -793,7 +796,7 @@
       weeks.push({ ws: startOfWeek(end), we: endOfWeek(end), label: fmt(startOfWeek(end), false).slice(5) });
     }
     const counts = weeks.map((w) =>
-      state.tasks.filter(isCreator).filter((t) => {
+      state.tasks.filter(isVisibleTask).filter((t) => {
         if (!t.completed_at) return false;
         const c = new Date(t.completed_at);
         return c >= w.ws && c < w.we;

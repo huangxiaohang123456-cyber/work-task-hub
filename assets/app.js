@@ -340,9 +340,10 @@
   function canApprove(t) { return isManager() && t.approval_status !== 'approved'; }
 
   function renderTasks() {
-    // 任务页：普通人员只看自己创建的；管理员/超管额外看全部「已通过」的团队任务（并可改状态）
+    // 任务页：本人创建的任务（任意状态）始终可见；「已通过」任务全员可见（符合 RLS 的"已通过→全员可见"）。
+    // 权限：只有创建人 + 管理员/超管能改已通过任务的状态（见 canChangeStatus），其他普通人员只能看、不能改。
     const list = state.tasks.filter((t) =>
-      (isCreator(t) || (isManager() && t.approval_status === 'approved')) && matchView(t) && matchOther(t));
+      (isCreator(t) || t.approval_status === 'approved') && matchView(t) && matchOther(t));
     taskList.innerHTML = '';
     emptyHint.classList.toggle('hidden', list.length > 0);
     const active = list.filter((t) => t.status !== 'done');

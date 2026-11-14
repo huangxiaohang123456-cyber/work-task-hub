@@ -89,9 +89,9 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .segmented button.active{background:var(--primary);color:#fff}
 
 /* ---------- 工具行 ---------- */
-.tool-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-.tool-row select{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--text);font-size:14px}
-.tool-row input[type=search]{flex:1;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.tool-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.tool-row select{padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--text);font-size:14px;max-width:48%}
+.tool-row input[type=search]{flex:1 1 120px;min-width:0;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 
 /* ---------- 任务列表 ---------- */
 .task-list{list-style:none;display:flex;flex-direction:column;gap:10px}

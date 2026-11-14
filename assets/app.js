@@ -33,7 +33,7 @@
     profile: { name: '' },
     session: null,
     tasks: [],
-    filters: { view: 'all', priority: '', search: '' }
+    filters: { view: 'all', priority: '', owner: '', search: '' }
   };
 
   const $ = (s) => document.querySelector(s);
@@ -320,9 +320,10 @@
   function matchOther(t) {
     const f = state.filters;
     if (f.priority && t.priority !== f.priority) return false;
+    if (f.owner && (t.owner_name || '') !== f.owner) return false;
     if (f.search) {
       const q = f.search.toLowerCase();
-      const hay = (t.title + ' ' + (t.tags || []).join(' ')).toLowerCase();
+      const hay = (t.title + ' ' + (t.owner_name || '') + ' ' + (t.tags || []).join(' ')).toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
@@ -345,9 +346,29 @@
   // 待审批 / 已驳回的任务统一只在「团队」模块显示（管理员看"待我审批"区，普通人员看"我提交的任务"区），不进任务页。
   function isVisibleTask(t) { return t.approval_status === 'approved'; }
 
+  // 负责人下拉：根据当前任务列表自动列出出现过的负责人（去重排序），仅在负责人集合变化时重建，避免打断选择
+  let ownerFilterSig = '';
+  function populateOwnerFilter() {
+    const sel = $('#filter-owner');
+    if (!sel) return;
+    const owners = Array.from(new Set(
+      state.tasks.map((t) => (t.owner_name || '').trim()).filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b, 'zh'));
+    const sig = owners.join('|');
+    if (sig === ownerFilterSig) return;
+    const cur = sel.value;
+    sel.innerHTML = '';
+    const opt0 = document.createElement('option'); opt0.value = ''; opt0.textContent = '全部负责人'; sel.appendChild(opt0);
+    owners.forEach((o) => { const op = document.createElement('option'); op.value = o; op.textContent = o; sel.appendChild(op); });
+    sel.value = owners.indexOf(cur) >= 0 ? cur : '';
+    ownerFilterSig = sig;
+    state.filters.owner = sel.value;
+  }
+
   function renderTasks() {
     // 任务页 = 公开看板：只显示「已通过」的任务，全员可见（待审批/已驳回在「团队」模块，不在此出现）。
     // 权限：只有创建人 + 管理员/超管能改已通过任务的状态（见 canChangeStatus），其他普通人员只能看、不能改。
+    populateOwnerFilter();
     const list = state.tasks.filter((t) =>
       isVisibleTask(t) && matchView(t) && matchOther(t));
     taskList.innerHTML = '';
@@ -769,6 +790,7 @@
       });
     });
     $('#filter-priority').addEventListener('change', (e) => { state.filters.priority = e.target.value; renderTasks(); });
+    $('#filter-owner').addEventListener('change', (e) => { state.filters.owner = e.target.value; renderTasks(); });
     $('#filter-search').addEventListener('input', (e) => { state.filters.search = e.target.value.trim(); renderTasks(); });
   }
 

@@ -85,9 +85,11 @@
     if (body !== undefined) { headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body); }
     const res = await netFetch(SB_URL + path, opt);
     let data = null;
-    try { data = await res.json(); } catch (e) { /* ignore */ }
+    let rawText = '';
+    try { rawText = await res.text(); } catch (e) { /* ignore */ }
+    try { data = rawText ? JSON.parse(rawText) : null; } catch (e) { /* ignore */ }
     if (!res.ok) {
-      const msg = (data && (data.message || data.error_description || (data.error && data.error.message))) || ('HTTP ' + res.status);
+      const msg = (data && (data.message || data.error_description || (data.error && data.error.message))) || (rawText && rawText.trim()) || ('HTTP ' + res.status);
       throw new Error(msg);
     }
     return data;

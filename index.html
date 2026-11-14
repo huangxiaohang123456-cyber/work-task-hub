@@ -11,27 +11,23 @@
 </head>
 <body>
 
-  <!-- ============ 登录 / 注册 界面 ============ -->
+  <!-- ============ 登录界面（数字账号） ============ -->
   <div id="auth-view" class="auth-view hidden">
     <div class="auth-card">
       <div class="auth-logo">📋</div>
       <h1 class="auth-title">工作任务台</h1>
-      <p class="auth-sub">用 QQ 邮箱注册登录，管理你自己的工作任务</p>
-      <div class="auth-tabs">
-        <button id="tab-login" type="button" class="auth-tab active">登录</button>
-        <button id="tab-register" type="button" class="auth-tab">注册</button>
-      </div>
+      <p class="auth-sub">使用数字账号登录（账号由团队管理员分配）</p>
       <form id="auth-form">
-        <label>邮箱
-          <input type="email" id="auth-email" placeholder="QQ 邮箱" autocomplete="email" />
+        <label>账号
+          <input type="text" id="auth-account" inputmode="numeric" placeholder="数字账号" autocomplete="username" />
         </label>
         <label>密码
-          <input type="password" id="auth-password" placeholder="至少 6 位" autocomplete="current-password" />
+          <input type="password" id="auth-password" placeholder="初始密码 123456" autocomplete="current-password" />
         </label>
         <p id="auth-msg" class="form-msg"></p>
         <button type="submit" class="btn-primary block" id="auth-submit">登录</button>
       </form>
-      <p class="auth-foot">注册即表示同意将数据安全存于云端，仅你本人可见</p>
+      <p class="auth-foot">账号由团队管理员导入；忘记密码请联系管理员重置</p>
     </div>
   </div>
 
@@ -107,8 +103,11 @@
       <!-- ============ 我的页 ============ -->
       <section id="page-me" class="page">
         <div class="panel">
-          <h3 class="panel-title">账号</h3>
-          <p class="hint">已登录：<span id="me-email"></span></p>
+          <h3 class="panel-title">账号信息</h3>
+          <p class="hint">账号：<span id="me-account"></span></p>
+          <p class="hint">姓名：<span id="me-name"></span></p>
+          <p class="hint">角色：<span id="me-role"></span></p>
+          <button class="btn-ghost block" id="btn-change-pwd">修改密码</button>
           <button class="btn-ghost block" id="btn-logout">退出登录</button>
         </div>
         <div class="panel">
@@ -175,6 +174,27 @@
             <button type="submit" class="btn-primary">保存</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- 修改密码 -->
+    <div id="pwd-modal" class="modal hidden">
+      <div class="modal-card">
+        <h3 class="modal-title">修改密码</h3>
+        <label>当前密码
+          <input type="password" id="pwd-current" autocomplete="current-password" />
+        </label>
+        <label>新密码（至少 6 位）
+          <input type="password" id="pwd-new" autocomplete="new-password" />
+        </label>
+        <label>确认新密码
+          <input type="password" id="pwd-confirm" autocomplete="new-password" />
+        </label>
+        <p id="pwd-msg" class="form-msg"></p>
+        <div class="modal-foot">
+          <button type="button" class="btn-ghost" data-close>取消</button>
+          <button type="button" class="btn-primary" id="pwd-submit">保存</button>
+        </div>
       </div>
     </div>
 

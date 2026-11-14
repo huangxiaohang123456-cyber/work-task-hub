@@ -103,14 +103,6 @@
     };
   }
 
-  async function doSignUp(email, password) {
-    const resp = await authReq('POST', '/auth/v1/signup', { email, password });
-    if (resp.data && resp.data.session) return normalizeSession(resp.data.session, resp.data.user);
-    if (resp.data && resp.data.user && !resp.data.session)
-      throw new Error('注册成功，但需先去邮箱确认（请在后台关闭 Confirm email 后重试）');
-    return normalizeSession(resp, resp.user);
-  }
-
   async function doSignIn(email, password) {
     const resp = await authReq('POST', '/auth/v1/token?grant_type=password', { email, password });
     return normalizeSession(resp, resp.user);
@@ -156,9 +148,32 @@
   function showApp() { $('#auth-view').classList.add('hidden'); $('#app').classList.remove('hidden'); applyUserLabels(); }
 
   function applyUserLabels() {
-    const email = state.session && state.session.user ? state.session.user.email : '';
-    if ($('#me-email')) $('#me-email').textContent = email;
-    $('#me-display').textContent = state.profile.name || email || '我';
+    const acc = state.profile.hr_code
+      || (state.session && state.session.user ? (state.session.user.email || '').split('@')[0] : '');
+    if ($('#me-account')) $('#me-account').textContent = acc || '—';
+    if ($('#me-name')) $('#me-name').textContent = state.profile.display_name || '—';
+    if ($('#me-role')) {
+      const map = { super_admin: '超级管理员', admin: '管理员', member: '普通人员' };
+      $('#me-role').textContent = map[state.profile.role] || '普通人员';
+    }
+    $('#me-display').textContent = state.profile.display_name || acc || '我';
+  }
+
+  // 登录后从 profiles 读取角色 / 姓名 / 人事编码
+  async function loadMyProfile() {
+    if (!state.session || !state.session.user) return;
+    const uid = state.session.user.id;
+    try {
+      const data = await supa('GET', 'profiles?select=*&id=eq.' + encodeURIComponent(uid));
+      const p = Array.isArray(data) && data[0];
+      state.profile = p
+        ? { role: p.role || 'member', display_name: p.display_name || '', hr_code: p.hr_code || '', name: p.display_name || '' }
+        : { role: 'member', display_name: '', hr_code: '', name: '' };
+    } catch (e) {
+      state.profile = { role: 'member', display_name: '', hr_code: '', name: '' };
+    }
+    saveProfile();
+    applyUserLabels();
   }
 
   async function boot() {
@@ -167,7 +182,7 @@
       try { saveSession(await refreshSession(state.session.refresh_token)); }
       catch (e) { /* 刷新失败则用原 token 试一次 */ }
     }
-    if (state.session && state.session.access_token) { showApp(); await loadTasks(); }
+    if (state.session && state.session.access_token) { showApp(); await loadMyProfile(); await loadTasks(); }
     else { showAuth(); }
   }
 
@@ -429,7 +444,8 @@
           await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(id), row);
         } else {
           row.created_at = new Date().toISOString();
-          row.user_id = state.session ? state.session.user.id : null;
+          row.created_by = state.session ? state.session.user.id : null;
+          row.approval_status = 'approved'; // 第一阶段：新任务默认已通过、全员可见；审批流在第三阶段接入
           const data = await supa('POST', 'tasks', row);
           const created = Array.isArray(data) && data[0];
           state.tasks.push(created || Object.assign({ id: 'tmp_' + Date.now() }, row));
@@ -739,36 +755,29 @@
   }
 
   // ============================================================
-  // 登录 / 注册
+  // 登录（数字账号）
   // ============================================================
-  let authMode = 'login';
   function bindAuth() {
-    $('#tab-login').addEventListener('click', () => setAuthMode('login'));
-    $('#tab-register').addEventListener('click', () => setAuthMode('register'));
     $('#auth-form').addEventListener('submit', onAuthSubmit);
     $('#btn-logout').addEventListener('click', logout);
-  }
-  function setAuthMode(m) {
-    authMode = m;
-    $('#tab-login').classList.toggle('active', m === 'login');
-    $('#tab-register').classList.toggle('active', m === 'register');
-    $('#auth-submit').textContent = m === 'login' ? '登录' : '注册';
-    $('#auth-msg').textContent = '';
+    $('#btn-change-pwd').addEventListener('click', () => openModal('#pwd-modal'));
+    $('#pwd-submit').addEventListener('click', onChangePassword);
   }
   async function onAuthSubmit(e) {
     e.preventDefault();
-    const email = $('#auth-email').value.trim();
+    const account = $('#auth-account').value.trim();
     const password = $('#auth-password').value;
     const msg = $('#auth-msg');
     msg.textContent = '';
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { msg.textContent = '请输入有效的邮箱'; return; }
-    if (!/@qq\.com$/i.test(email)) { msg.textContent = '请使用 QQ 邮箱注册 / 登录'; return; }
+    if (!/^\d+$/.test(account)) { msg.textContent = '请输入数字账号'; return; }
     if (password.length < 6) { msg.textContent = '密码至少 6 位'; return; }
     $('#auth-submit').disabled = true;
     try {
-      const s = authMode === 'login' ? await doSignIn(email, password) : await doSignUp(email, password);
+      const email = account + '@wtb.local'; // 数字账号映射为内部邮箱，复用 Supabase Auth
+      const s = await doSignIn(email, password);
       saveSession(s);
       showApp();
+      await loadMyProfile();
       await loadTasks();
     } catch (err) {
       msg.textContent = err.message || String(err);
@@ -782,6 +791,43 @@
     clearTasksCache();
     state.tasks = [];
     showAuth();
+  }
+
+  // 修改自己的密码（先验证当前密码，再用新会话调用 Auth API 改密）
+  async function onChangePassword() {
+    const cur = $('#pwd-current').value;
+    const neu = $('#pwd-new').value;
+    const confirm = $('#pwd-confirm').value;
+    const msg = $('#pwd-msg');
+    msg.textContent = '';
+    if (!cur || !neu) { msg.textContent = '请填写当前密码和新密码'; return; }
+    if (neu.length < 6) { msg.textContent = '新密码至少 6 位'; return; }
+    if (neu !== confirm) { msg.textContent = '两次输入的新密码不一致'; return; }
+    $('#pwd-submit').disabled = true;
+    try {
+      const email = state.session && state.session.user ? state.session.user.email : '';
+      if (!email) throw new Error('未登录');
+      const s = await doSignIn(email, cur); // 验证当前密码并重获会话
+      const res = await fetch(SB_URL + '/auth/v1/user', {
+        method: 'PUT',
+        headers: {
+          'apikey': KEY,
+          'Authorization': 'Bearer ' + s.access_token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ password: neu })
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.message || j.error_description || ('HTTP ' + res.status));
+      saveSession(s);
+      closeModal('#pwd-modal');
+      $('#pwd-current').value = ''; $('#pwd-new').value = ''; $('#pwd-confirm').value = '';
+      alert('密码修改成功，请使用新密码登录。');
+    } catch (err) {
+      msg.textContent = err.message || String(err);
+    } finally {
+      $('#pwd-submit').disabled = false;
+    }
   }
 
   // ============================================================

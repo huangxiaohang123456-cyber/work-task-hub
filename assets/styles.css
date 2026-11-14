@@ -15,6 +15,29 @@ body{
 }
 .hidden{display:none !important}
 
+/* ---------- 页面顶部返回栏（人员管理等子页） ---------- */
+.page-head{display:flex;align-items:center;gap:10px;margin:-14px -14px 14px;padding:14px 16px;background:var(--primary);color:#fff;box-shadow:0 2px 10px rgba(242,128,47,.25)}
+.page-head .back-btn{color:#fff;font-size:15px;font-weight:700;padding:4px 4px}
+.page-head-title{font-size:17px;font-weight:800}
+
+/* ---------- 人员管理 ---------- */
+.people-list{list-style:none}
+.people-item{display:flex;flex-direction:column;gap:8px;padding:12px 0;border-bottom:1px solid var(--line)}
+.people-item:last-child{border-bottom:none}
+.people-info{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.people-name{font-weight:700;font-size:15px}
+.people-hr{font-size:12px;color:var(--muted)}
+.role-badge{font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--primary-l);color:var(--primary-d)}
+.role-badge.super_admin{background:#fde2e2;color:#b91c1c}
+.role-badge.admin{background:#e0edff;color:#1d4ed8}
+.role-badge.member{background:#e7f6ec;color:var(--green)}
+.self-tag{font-size:12px;color:var(--muted)}
+.people-actions{display:flex;flex-wrap:wrap;gap:8px}
+.mini-btn{font-size:13px;font-weight:700;padding:7px 12px;border-radius:9px;background:#fff;border:1px solid var(--line);color:var(--text)}
+.mini-btn.primary{background:var(--primary);color:#fff;border-color:var(--primary)}
+.mini-btn.danger{background:#fff;color:var(--red);border-color:#f3c2c2}
+.people-loading,.empty-hint{padding:20px 0;text-align:center;color:var(--muted);font-size:14px}
+
 /* ---------- 离线/错误横幅 ---------- */
 .banner{display:flex;align-items:center;gap:10px;margin:12px 14px 0;padding:10px 12px;border-radius:11px;font-size:13px;font-weight:600;line-height:1.45}
 .banner.warn{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412}

@@ -159,6 +159,11 @@
       $('#me-role').textContent = map[state.profile.role] || '普通人员';
     }
     $('#me-display').textContent = state.profile.display_name || acc || '我';
+    // 仅管理员/超级管理员可见「人员管理」入口
+    const role = state.profile.role;
+    if ($('#me-admin-entry')) {
+      $('#me-admin-entry').style.display = (role === 'super_admin' || role === 'admin') ? '' : 'none';
+    }
   }
 
   // 登录后从 profiles 读取角色 / 姓名 / 人事编码
@@ -245,6 +250,11 @@
       const rb = $('#btn-retry');
       if (rb) rb.addEventListener('click', () => { hideOfflineBanner(); loadTasks(); });
       $('#fab').addEventListener('click', () => openTaskModal(null));
+      // 人员管理页面事件
+      const op = $('#open-people'); if (op) op.addEventListener('click', () => switchPage('people'));
+      const pb = $('#people-back'); if (pb) pb.addEventListener('click', () => switchPage('me'));
+      const pi = $('#p-import'); if (pi) pi.addEventListener('click', onImportPerson);
+      const pl = $('#people-list'); if (pl) pl.addEventListener('click', onPeopleListClick);
       await boot();
     } catch (e) {
       showFatal((e && (e.stack || e.message)) || String(e));
@@ -630,6 +640,118 @@
     document.querySelectorAll('.page').forEach((p) => p.classList.toggle('active', p.id === 'page-' + page));
     $('#fab').classList.toggle('hidden', page !== 'tasks');
     if (page === 'team') renderTeam();
+    if (page === 'people') renderPeople();
+  }
+
+  // ============================================================
+  // 人员管理（调用 Edge Function：personnel）
+  // ============================================================
+  async function callPersonnel(action, payload) {
+    if (!state.session) throw new Error('未登录');
+    const opt = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': KEY,
+        'Authorization': 'Bearer ' + state.session.access_token
+      },
+      body: JSON.stringify(Object.assign({ action: action }, payload || {}))
+    };
+    const res = await netFetch(SB_URL + '/functions/v1/personnel', opt);
+    let data = null, raw = '';
+    try { raw = await res.text(); } catch (e) { /* ignore */ }
+    try { data = raw ? JSON.parse(raw) : null; } catch (e) { /* ignore */ }
+    if (!res.ok) {
+      const msg = (data && data.error) || (raw && raw.trim()) || ('HTTP ' + res.status);
+      throw new Error(msg);
+    }
+    return data;
+  }
+
+  const ROLE_TEXT = { super_admin: '超级管理员', admin: '管理员', member: '普通人员' };
+
+  async function renderPeople() {
+    const list = $('#people-list');
+    if (!list) return;
+    list.innerHTML = '<li class="people-loading">加载中…</li>';
+    try {
+      const data = await callPersonnel('list', {});
+      const users = data.users || [];
+      if (!users.length) { list.innerHTML = '<li class="empty-hint">暂无人员</li>'; return; }
+      const myRole = state.profile.role;
+      const myId = state.session ? state.session.user.id : null;
+      list.innerHTML = '';
+      users.forEach((u) => {
+        const li = document.createElement('li');
+        li.className = 'people-item';
+        const isSelf = u.id === myId;
+        let actions = '';
+        if (!isSelf) {
+          if (myRole === 'super_admin') {
+            if (u.role === 'admin') {
+              actions += '<button class="mini-btn" data-role="member" data-id="' + u.id + '">降为普通人员</button>';
+            } else if (u.role === 'member') {
+              actions += '<button class="mini-btn primary" data-role="admin" data-id="' + u.id + '">提拔为管理员</button>';
+            }
+            actions += '<button class="mini-btn danger" data-reset="' + u.id + '">重置密码</button>';
+          } else if (myRole === 'admin' && u.role === 'member') {
+            actions += '<button class="mini-btn danger" data-reset="' + u.id + '">重置密码</button>';
+          }
+        }
+        li.innerHTML =
+          '<div class="people-info">' +
+            '<span class="people-name">' + esc(u.display_name || '未命名') + '</span>' +
+            '<span class="people-hr">编码 ' + esc(u.hr_code || '-') + '</span>' +
+            '<span class="role-badge ' + (u.role || '') + '">' + (ROLE_TEXT[u.role] || u.role || '普通人员') + '</span>' +
+            (isSelf ? '<span class="self-tag">（我）</span>' : '') +
+          '</div>' +
+          (actions ? '<div class="people-actions">' + actions + '</div>' : '');
+        list.appendChild(li);
+      });
+    } catch (e) {
+      list.innerHTML = '<li class="empty-hint">加载失败：' + esc(e.message) + '</li>';
+    }
+  }
+
+  async function onImportPerson() {
+    const nameEl = $('#p-name'), hrEl = $('#p-hr'), msg = $('#p-import-msg');
+    if (!msg) return;
+    msg.textContent = ''; msg.style.color = '';
+    const name = (nameEl ? nameEl.value : '').trim();
+    const hr = (hrEl ? hrEl.value : '').trim();
+    if (!name || !hr) { msg.textContent = '请填写姓名和人事编码'; return; }
+    try {
+      const r = await callPersonnel('import', { display_name: name, hr_code: hr });
+      msg.style.color = 'var(--green)';
+      msg.textContent = '导入成功：' + (r.user.display_name) + '（账号 ' + r.user.hr_code + '，默认密码 123456）';
+      if (nameEl) nameEl.value = '';
+      if (hrEl) hrEl.value = '';
+      renderPeople();
+    } catch (e) {
+      msg.style.color = 'var(--red)';
+      msg.textContent = '导入失败：' + e.message;
+    }
+  }
+
+  async function onPeopleListClick(e) {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    if (btn.dataset.role) {
+      const id = btn.dataset.id, role = btn.dataset.role;
+      const label = role === 'admin' ? '提拔为管理员' : '降级为普通人员';
+      if (!confirm('确定将该人员' + label + '？')) return;
+      try {
+        await callPersonnel('setRole', { user_id: id, role: role });
+        renderPeople();
+      } catch (err) { alert('操作失败：' + err.message); }
+    } else if (btn.dataset.reset) {
+      const id = btn.dataset.reset;
+      if (!confirm('确定将该人员密码重置为 123456？')) return;
+      try {
+        await callPersonnel('resetPassword', { user_id: id });
+        alert('已重置密码为 123456');
+      } catch (err) { alert('操作失败：' + err.message); }
+    }
   }
 
   function bindToolbar() {

@@ -124,10 +124,41 @@
           <button class="btn-ghost block" id="btn-change-pwd">修改密码</button>
           <button class="btn-ghost block" id="btn-logout">退出登录</button>
         </div>
+        <div class="panel" id="me-admin-entry" style="display:none">
+          <h3 class="panel-title">👥 人员管理</h3>
+          <p class="hint">导入普通人员、提拔/降级管理员、重置密码。仅管理员与超级管理员可用。</p>
+          <button class="btn-primary block" id="open-people">进入人员管理</button>
+        </div>
         <div class="panel">
           <h3 class="panel-title">数据导出</h3>
           <p class="hint">点击按钮直接下载 Excel 文件（含标题、截止时间、完成情况、优先级等）。手机自带浏览器（Safari / Chrome）可直接保存；微信/QQ 内若无法下载，请点右上角「…」→「在浏览器打开」后再下载。</p>
           <button class="btn-ghost block" id="btn-export">📊 导出 Excel（.xlsx）</button>
+        </div>
+      </section>
+
+      <!-- ============ 人员管理页 ============ -->
+      <section id="page-people" class="page">
+        <div class="page-head">
+          <button class="back-btn" id="people-back">← 返回</button>
+          <h2 class="page-head-title">人员管理</h2>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">导入普通人员</h3>
+          <p class="hint">姓名 + 人事编码（纯数字，作为登录账号），系统自动生成默认密码 <b>123456</b>。</p>
+          <label>姓名
+            <input type="text" id="p-name" placeholder="例如：张三" maxlength="40" />
+          </label>
+          <label>人事编码（登录账号）
+            <input type="text" id="p-hr" inputmode="numeric" placeholder="例如：02602070" maxlength="20" />
+          </label>
+          <button class="btn-primary block" id="p-import">导入</button>
+          <p id="p-import-msg" class="form-msg"></p>
+        </div>
+
+        <div class="panel">
+          <h3 class="panel-title">人员列表</h3>
+          <ul id="people-list" class="people-list"></ul>
         </div>
       </section>
 

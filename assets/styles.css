@@ -137,6 +137,7 @@ label input:focus,label select:focus,label textarea:focus{outline:none;border-co
 .panel{background:var(--card);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
 .panel-title{font-size:15px;font-weight:700;margin:4px 0 12px}
 .panel-title:not(:first-child){margin-top:18px}
+.panel-sub{font-size:12px;color:var(--muted);line-height:1.6;margin:0 0 12px}
 .hint{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6}
 
 /* ---------- CSS 条形（按优先级/状态分布） ---------- */

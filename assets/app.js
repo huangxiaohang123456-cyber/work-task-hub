@@ -420,22 +420,30 @@
 
   function renderTeam() {
     const approveZone = $('#approve-zone');
+    const myReviewZone = $('#my-review-zone');
     const approveList = $('#approve-list');
-    if (!approveZone) return;
-    // 待我审批（仅管理员/超管）：待审批 + 已驳回，可在此通过/驳回
+    const myReviewList = $('#my-review-list');
+    if (!approveZone || !myReviewZone) return;
     if (isManager()) {
+      // 管理员/超管：待我审批（他人「待审批 + 已驳回」，可在此通过/驳回）
       approveZone.classList.remove('hidden');
+      myReviewZone.classList.add('hidden');
       const pend = state.tasks.filter((t) => t.approval_status !== 'approved');
       approveList.innerHTML = '';
       const ae = $('#approve-empty'); if (ae) ae.classList.toggle('hidden', pend.length > 0);
       pend.forEach((t) => approveList.appendChild(makeCard(t, t.status === 'done', { showApprove: true })));
+      bindTeamEvents();
     } else {
+      // 普通人员：我提交的任务（待审批 / 已驳回），聚焦显示，避免被任务页大量任务淹没
       approveZone.classList.add('hidden');
+      myReviewZone.classList.remove('hidden');
+      const myPend = state.tasks.filter((t) => isCreator(t) && t.approval_status !== 'approved');
+      myReviewList.innerHTML = '';
+      const me = $('#my-review-empty'); if (me) me.classList.toggle('hidden', myPend.length > 0);
+      myPend.forEach((t) => myReviewList.appendChild(makeCard(t, t.status === 'done')));
+      // 绑定本列表内卡片的编辑/删除按钮
+      bindTaskItemEvents(myReviewList);
     }
-    // 普通人员无审批权限：提示已通过任务在「任务」页
-    const memberHint = $('#team-member-hint');
-    if (memberHint) memberHint.classList.toggle('hidden', isManager());
-    bindTeamEvents();
   }
 
   function bindTeamEvents() {
@@ -493,8 +501,9 @@
     $('#sc-over').textContent = c.over;
   }
 
-  function bindTaskItemEvents() {
-    taskList.querySelectorAll('.status-select').forEach((sel) => {
+  function bindTaskItemEvents(scope) {
+    scope = scope || taskList;
+    scope.querySelectorAll('.status-select').forEach((sel) => {
       sel.addEventListener('change', async () => {
         const t = state.tasks.find((x) => x.id === sel.dataset.id);
         if (!t) return;
@@ -504,13 +513,13 @@
         try {
           await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(t.id), { status: v, completed_at: t.completed_at });
         } catch (e) { alert('更新失败：' + (e.message || e)); }
-        renderTasks(); renderStats();
+        renderTasks(); renderStats(); renderTeam();
       });
     });
-    taskList.querySelectorAll('[data-edit]').forEach((b) => {
+    scope.querySelectorAll('[data-edit]').forEach((b) => {
       b.addEventListener('click', () => openTaskModal(b.dataset.edit));
     });
-    taskList.querySelectorAll('[data-del]').forEach((b) => {
+    scope.querySelectorAll('[data-del]').forEach((b) => {
       b.addEventListener('click', async () => {
         if (!confirm('确定删除该任务？')) return;
         const id = b.dataset.del;
@@ -518,7 +527,7 @@
           await supa('DELETE', 'tasks?id=eq.' + encodeURIComponent(id));
           state.tasks = state.tasks.filter((t) => t.id !== id);
         } catch (e) { return alert('删除失败：' + (e.message || e)); }
-        renderTasks(); renderStats();
+        renderTasks(); renderStats(); renderTeam();
       });
     });
   }
@@ -575,7 +584,7 @@
         }
       } catch (err) { msg.textContent = '保存失败：' + (err.message || err); return; }
       closeModal('#task-modal');
-      renderTasks(); renderStats();
+      renderTasks(); renderStats(); renderTeam();
     });
   }
 

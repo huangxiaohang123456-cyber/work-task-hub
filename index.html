@@ -107,7 +107,12 @@
           <ul id="approve-list" class="task-list"></ul>
           <p id="approve-empty" class="empty-hint hidden">暂无待审批任务</p>
         </div>
-        <p id="team-member-hint" class="empty-hint hidden">已通过的团队任务已移至「任务」页查看；审批功能仅管理员/超级管理员可用。</p>
+        <div id="my-review-zone" class="panel hidden">
+          <h3 class="panel-title">我提交的任务（待审批 / 已驳回）</h3>
+          <p class="panel-sub">这里只显示你提交、尚未通过审批的任务，便于集中处理；已通过的任务请到「任务」页查看。</p>
+          <ul id="my-review-list" class="task-list"></ul>
+          <p id="my-review-empty" class="empty-hint hidden">暂无待审批或被驳回的任务</p>
+        </div>
       </section>
 
       <!-- ============ 我的页 ============ -->

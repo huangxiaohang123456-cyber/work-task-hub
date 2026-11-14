@@ -112,6 +112,7 @@ Deno.serve(async (req: Request) => {
       const { data: newUser, error: createErr } = await admin.auth.admin.createUser({
         email,
         password,
+        emailConfirm: true, // 自动确认邮箱（supabase-js v2 当前字段名；兼容旧名 email_confirm）
         email_confirm: true,
       });
       if (createErr) {

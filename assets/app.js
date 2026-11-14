@@ -335,11 +335,14 @@
   function apprText(s) { return { pending: '待审批', approved: '已通过', rejected: '已驳回' }[s] || s || ''; }
   function canEdit(t) { return isCreator(t) && t.approval_status === 'rejected'; }
   function canDelete(t) { return isManager() || (isCreator(t) && t.approval_status === 'rejected'); }
-  function canChangeStatus(t) { return isCreator(t) && t.approval_status === 'approved'; }
+  // 执行状态（待办/进行中/已完成）：创建人 或 管理员/超管 可改「已通过」任务的状态
+  function canChangeStatus(t) { return (isManager() || isCreator(t)) && t.approval_status === 'approved'; }
   function canApprove(t) { return isManager() && t.approval_status !== 'approved'; }
 
   function renderTasks() {
-    const list = state.tasks.filter((t) => isCreator(t) && matchView(t) && matchOther(t));
+    // 任务页：普通人员只看自己创建的；管理员/超管额外看全部「已通过」的团队任务（并可改状态）
+    const list = state.tasks.filter((t) =>
+      (isCreator(t) || (isManager() && t.approval_status === 'approved')) && matchView(t) && matchOther(t));
     taskList.innerHTML = '';
     emptyHint.classList.toggle('hidden', list.length > 0);
     const active = list.filter((t) => t.status !== 'done');
@@ -412,25 +415,20 @@
   function renderTeam() {
     const approveZone = $('#approve-zone');
     const approveList = $('#approve-list');
-    const teamList = $('#team-list');
-    if (!teamList) return;
-    // 待我审批（仅管理员/超管）
-    if (approveZone && approveList) {
-      if (isManager()) {
-        approveZone.classList.remove('hidden');
-        const pend = state.tasks.filter((t) => t.approval_status !== 'approved');
-        approveList.innerHTML = '';
-        const ae = $('#approve-empty'); if (ae) ae.classList.toggle('hidden', pend.length > 0);
-        pend.forEach((t) => approveList.appendChild(makeCard(t, t.status === 'done', { showApprove: true })));
-      } else {
-        approveZone.classList.add('hidden');
-      }
+    if (!approveZone) return;
+    // 待我审批（仅管理员/超管）：待审批 + 已驳回，可在此通过/驳回
+    if (isManager()) {
+      approveZone.classList.remove('hidden');
+      const pend = state.tasks.filter((t) => t.approval_status !== 'approved');
+      approveList.innerHTML = '';
+      const ae = $('#approve-empty'); if (ae) ae.classList.toggle('hidden', pend.length > 0);
+      pend.forEach((t) => approveList.appendChild(makeCard(t, t.status === 'done', { showApprove: true })));
+    } else {
+      approveZone.classList.add('hidden');
     }
-    // 团队任务（已通过，全员可见）
-    const team = state.tasks.filter((t) => t.approval_status === 'approved');
-    teamList.innerHTML = '';
-    const te = $('#team-empty'); if (te) te.classList.toggle('hidden', team.length > 0);
-    team.forEach((t) => teamList.appendChild(makeCard(t, t.status === 'done', { showApprove: false })));
+    // 普通人员无审批权限：提示已通过任务在「任务」页
+    const memberHint = $('#team-member-hint');
+    if (memberHint) memberHint.classList.toggle('hidden', isManager());
     bindTeamEvents();
   }
 
@@ -439,19 +437,6 @@
     if (approveList) {
       approveList.querySelectorAll('[data-approve]').forEach((b) => b.addEventListener('click', () => onApprove(b.dataset.approve)));
       approveList.querySelectorAll('[data-reject]').forEach((b) => b.addEventListener('click', () => openReject(b.dataset.reject)));
-    }
-    const teamList = $('#team-list');
-    if (teamList) {
-      teamList.querySelectorAll('.status-select').forEach((sel) => sel.addEventListener('change', async () => {
-        const t = state.tasks.find((x) => x.id === sel.dataset.id);
-        if (!t) return;
-        const v = sel.value;
-        t.status = v;
-        t.completed_at = v === 'done' ? new Date().toISOString() : null;
-        try { await supa('PATCH', 'tasks?id=eq.' + encodeURIComponent(t.id), { status: v, completed_at: t.completed_at }); }
-        catch (e) { alert('更新失败：' + (e.message || e)); }
-        renderTeam(); renderStats();
-      }));
     }
   }
 

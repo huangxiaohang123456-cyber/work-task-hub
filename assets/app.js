@@ -33,6 +33,7 @@
     profile: { name: '' },
     session: null,
     tasks: [],
+    people: [],            // 人员列表（负责人下拉用），来自 personnel list
     filters: { view: 'all', priority: '', owner: '', search: '' }
   };
 
@@ -339,8 +340,16 @@
     return (isCreator(t) && t.approval_status === 'rejected') || (isManager() && t.approval_status === 'approved');
   }
   function canDelete(t) { return isManager() || (isCreator(t) && t.approval_status === 'rejected'); }
-  // 执行状态（待办/进行中/已完成）：创建人 或 管理员/超管 可改「已通过」任务的状态
-  function canChangeStatus(t) { return (isManager() || isCreator(t)) && t.approval_status === 'approved'; }
+  // 负责人（owner_name 用姓名匹配，兼容旧数据没有 owner_id 的情况）
+  function isOwner(t) {
+    const myName = (state.profile && (state.profile.display_name || state.profile.hr_code)) || '';
+    if (t.owner_id && meUid()) return t.owner_id === meUid();
+    return !!(myName && t.owner_name === myName);
+  }
+  // 执行状态（待办/进行中/已完成）：负责人 或 创建人 或 管理员/超管 可改「已通过」任务的状态
+  function canChangeStatus(t) {
+    return (isManager() || isCreator(t) || isOwner(t)) && t.approval_status === 'approved';
+  }
   function canApprove(t) { return isManager() && t.approval_status !== 'approved'; }
   // 任务页 / 统计页的「可见范围」：仅显示「已通过」的任务（公开看板，全员可见）。
   // 待审批 / 已驳回的任务统一只在「团队」模块显示（管理员看"待我审批"区，普通人员看"我提交的任务"区），不进任务页。
@@ -564,12 +573,14 @@
       const id = $('#task-id').value;
       const dueVal = $('#f-due').value;
       const dueIso = dueVal ? new Date(dueVal).toISOString() : null;
-      const owner = $('#f-owner').value.trim();
+      const ownerSel = $('#f-owner');
+      const owner = (ownerSel.value || '').trim();
+      const ownerUid = (ownerSel.selectedOptions && ownerSel.selectedOptions[0] && ownerSel.selectedOptions[0].dataset.uid) || '';
       const title = $('#f-title').value.trim();
       const msg = $('#task-form-msg');
       if (!title) { msg.textContent = '请填写标题'; return; }
       if (!dueIso) { msg.textContent = '请填写截止日期'; return; }
-      if (!owner) { msg.textContent = '请填写负责人'; return; }
+      if (!owner) { msg.textContent = '请选择负责人'; return; }
       const status = $('#f-status').value;
       const oldT = id ? state.tasks.find((x) => x.id === id) : null;
       const row = {
@@ -580,6 +591,8 @@
         due_date: dueIso,
         owner_name: owner
       };
+      // 有 uid 就写入（精确判定负责人）；历史只读项没有 uid，则不改 owner_id
+      if (ownerUid) row.owner_id = ownerUid;
       const wasDone = oldT && oldT.status === 'done';
       if (status === 'done' && !wasDone) row.completed_at = new Date().toISOString();
       else if (status !== 'done') row.completed_at = null;
@@ -611,8 +624,66 @@
     });
   }
 
-  function openTaskModal(id) {
+  // 负责人下拉候选：从人员管理接口读取，按角色限定可选范围
+  //   超管        -> 管理员 + 普通人员（排除所有超管，含自己）
+  //   管理员      -> 只普通人员（同级管理员之间不可互选，也看不到超管）
+  //   普通人员    -> 只有本人，锁定不可改
+  async function fillOwnerSelect(selectedName) {
+    const sel = $('#f-owner');
+    if (!sel) return;
+    const role = (state.profile && state.profile.role) || 'member';
+    const isMember = !isManager();
+
+    if (isMember) {
+      const myName = state.profile.display_name || state.profile.hr_code || '';
+      sel.innerHTML = '';
+      const op = document.createElement('option');
+      op.value = myName; op.textContent = myName || '本人';
+      if (meUid()) op.dataset.uid = meUid();
+      sel.appendChild(op);
+      sel.value = myName;
+      sel.disabled = true;
+      return;
+    }
+
+    sel.disabled = false;
+    let users = [];
+    try {
+      const data = await callPersonnel('list', {});
+      users = (data && data.users) || [];
+    } catch (e) { users = []; }
+
+    let candidates;
+    if (SUPER_NAMES.includes(role)) {
+      // 超管：可选管理员 + 普通人员
+      candidates = users.filter((u) => !SUPER_NAMES.includes(u.role));
+    } else {
+      // 管理员：只能选普通人员
+      candidates = users.filter((u) => u.role === 'member');
+    }
+    candidates.sort((a, b) => (a.display_name || '').localeCompare(b.display_name || '', 'zh'));
+
+    sel.innerHTML = '<option value="">请选择负责人</option>';
+    candidates.forEach((u) => {
+      const op = document.createElement('option');
+      op.value = u.display_name || '';
+      op.textContent = (u.display_name || '未命名') + '（' + (ROLE_TEXT[u.role] || u.role || '') + '）';
+      if (u.id) op.dataset.uid = u.id;
+      sel.appendChild(op);
+    });
+
+    // 历史负责人若已不在候选（被删/调岗/超管），保留只读项，避免编辑保存时丢失负责人
+    if (selectedName && !candidates.some((u) => u.display_name === selectedName)) {
+      const op = document.createElement('option');
+      op.value = selectedName; op.textContent = selectedName + '（原负责人）';
+      sel.appendChild(op);
+    }
+    sel.value = selectedName || '';
+  }
+
+  async function openTaskModal(id) {
     const msg = $('#task-form-msg'); msg.textContent = '';
+    let currentOwner = '';
     if (id) {
       const t = state.tasks.find((x) => x.id === id);
       if (!t) return;
@@ -624,9 +695,7 @@
       $('#f-status').value = t.status;
       $('#f-status').disabled = (t.status === 'done');
       $('#f-due').value = t.due_date ? toLocalInput(t.due_date) : '';
-      $('#f-owner').value = t.owner_name || '';
-      // 普通人员编辑时负责人锁定为本人（管理员可改）
-      $('#f-owner').disabled = ((state.profile.role || 'member') === 'member');
+      currentOwner = t.owner_name || '';
     } else {
       $('#task-modal-title').textContent = '添加任务';
       $('#task-form').reset();
@@ -634,15 +703,8 @@
       $('#f-priority').value = 'medium';
       $('#f-status').value = 'todo';
       $('#f-status').disabled = false;
-      $('#f-owner').value = '';
-      // 普通人员添加任务：负责人默认本人且锁定（负责人=本人名字）
-      if ((state.profile.role || 'member') === 'member') {
-        $('#f-owner').value = state.profile.display_name || state.profile.hr_code || '';
-        $('#f-owner').disabled = true;
-      } else {
-        $('#f-owner').disabled = false;
-      }
     }
+    await fillOwnerSelect(currentOwner);
     openModal('#task-modal');
   }
 

@@ -1076,6 +1076,32 @@
       });
     }
   }
+  // 把登录等场景的英文/JSON 错误翻译成中文，便于团队成员看懂
+  function translateAuthError(err) {
+    const raw = (err && (err.message || String(err))) || '';
+    const s = raw.toLowerCase();
+    if (raw.includes('invalid_credentials') || s.includes('invalid login credentials')) {
+      return '账号或密码错误，请检查后重试';
+    }
+    if (s.includes('not confirmed') || s.includes('email_not_confirmed')) {
+      return '该账号尚未激活，请联系管理员重置密码后再试';
+    }
+    if (s.includes('user not found') || s.includes('no user found')) {
+      return '账号不存在，请确认人事编码是否正确';
+    }
+    if (s.includes('too many requests') || s.includes('rate limit') || s.includes('over_request_rate_limit')) {
+      return '尝试次数过多，请稍后再试';
+    }
+    if (s.includes('network error') || s.includes('failed to fetch') || s.includes('network')) {
+      return '网络异常，请检查网络后重试';
+    }
+    if (s.includes('signup is disabled') || s.includes('sign-ups not allowed')) {
+      return '当前不允许注册，请使用管理员分配的账号登录';
+    }
+    // 已经含中文则原样返回；其余兜底
+    if (/[一-龥]/.test(raw)) return raw;
+    return '登录失败，请稍后重试';
+  }
   async function onAuthSubmit(e) {
     e.preventDefault();
     const account = $('#auth-account').value.trim();
@@ -1097,7 +1123,7 @@
       const te = $('#auth-pw-toggle');
       if (te) { const o = te.querySelector('.eye-open'), c = te.querySelector('.eye-closed'); if (o) o.classList.remove('hidden'); if (c) c.classList.add('hidden'); }
     } catch (err) {
-      msg.textContent = err.message || String(err);
+      msg.textContent = translateAuthError(err);
     } finally {
       $('#auth-submit').disabled = false;
     }

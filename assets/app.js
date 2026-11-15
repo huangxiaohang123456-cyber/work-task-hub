@@ -1061,6 +1061,20 @@
     $('#btn-logout').addEventListener('click', logout);
     $('#btn-change-pwd').addEventListener('click', () => openModal('#pwd-modal'));
     $('#pwd-submit').addEventListener('click', onChangePassword);
+    // 登录页密码显示/隐藏（眼睛图标）：点击在明文(text)与圆点(password)之间切换
+    const pwInput = $('#auth-password');
+    const pwToggle = $('#auth-pw-toggle');
+    if (pwInput && pwToggle) {
+      pwToggle.addEventListener('click', () => {
+        const visible = pwInput.type === 'text';
+        pwInput.type = visible ? 'password' : 'text';
+        const eyeOpen = pwToggle.querySelector('.eye-open');
+        const eyeClosed = pwToggle.querySelector('.eye-closed');
+        if (eyeOpen) eyeOpen.classList.toggle('hidden', !visible);
+        if (eyeClosed) eyeClosed.classList.toggle('hidden', visible);
+        pwInput.focus();
+      });
+    }
   }
   async function onAuthSubmit(e) {
     e.preventDefault();
@@ -1078,6 +1092,10 @@
       showApp();
       await loadMyProfile();
       await loadTasks();
+      // 登录成功后复位登录页：清空密码并恢复为圆点隐藏，避免下次进入停留在明文
+      const pe = $('#auth-password'); if (pe) { pe.type = 'password'; pe.value = ''; }
+      const te = $('#auth-pw-toggle');
+      if (te) { const o = te.querySelector('.eye-open'), c = te.querySelector('.eye-closed'); if (o) o.classList.remove('hidden'); if (c) c.classList.add('hidden'); }
     } catch (err) {
       msg.textContent = err.message || String(err);
     } finally {
